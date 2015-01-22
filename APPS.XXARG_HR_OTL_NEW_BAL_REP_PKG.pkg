@@ -1,0 +1,1024 @@
+CREATE OR REPLACE PACKAGE XXARG_HR_OTL_NEW_BAL_REP_PKG AUTHID CURRENT_USER as
+
+/*******************************************************************************
+*             Copyright (c) 2009, by Wendy's Arby's Group                      *
+*                                                                              *
+*   Package Name     :  XXARG_HR_OTL_new_BAL_REP_PKG                           *
+*   Author           :  Venky Konda                                            *
+*   Description      :  This package creates the Balancing report for OTL      *
+*                                                                              *
+* HISTORY                                                                      *
+* Changed BY     Change Date   Version  Comments                               *
+* -------------  ------------  -------  ---------------------------------------*
+*  Venky        25-Dec-2009    115.0  Initial Version                        *
+*                                                                              *
+*******************************************************************************/
+
+procedure gen_otl_bal_rep(errbuf       OUT VARCHAR2
+                         ,retcode      OUT VARCHAR2
+                         ,p_bus_grp_id IN NUMBER
+                         ,p_payroll_id IN NUMBER
+                         ,p_area_dist  IN NUMBER
+                         ,p_eff_date   IN VARCHAR2);
+
+--PROCEDURE PUT_LINE(pi_text varchar2);
+
+TYPE record_type IS RECORD (file_emp_count   number
+                           ,loaded_emp_count number
+                           ,file_hours       number
+                           ,loaded_hours     number
+                           ,file_dollars     number
+                           ,loaded_dollars   number);
+
+gt_dept      record_type := null;
+g_debug      VARCHAR2(1) := 'N';
+gn_ln_ct     NUMBER;
+gn_pg_size   NUMBER;
+gn_pg_no     NUMBER;
+gn_pg_no_tmp     NUMBER;
+g_wag_org    VARCHAR2(80);
+g_run_date   DATE;
+g_rep_name   varchar2(30) := 'TAS227WA';
+
+--
+g_week_end_date DATE;
+g_region_name varchar2(80);
+g_sr_div_name varchar2(80);
+g_dist_area_name varchar2(80);
+g_area_dist_name varchar2(80);
+g_store_dept_name varchar2(80);
+g_payroll_name varchar2(80);
+
+g_pkg_name     constant varchar2(30) := 'XXARG_HR_OTL_new_BAL_REP_PKG';
+
+
+   PROCEDURE create_header;
+
+
+end XXARG_HR_OTL_new_BAL_REP_PKG;
+
+/
+CREATE OR REPLACE PACKAGE BODY XXARG_HR_OTL_NEW_BAL_REP_PKG
+AS
+/*******************************************************************************
+*             Copyright (c) 2009, by Wendy's Arby's Group                      *
+*                                                                              *
+*   Package Name     :  XXARG_HR_OTL_new_BAL_REP_PKG                           *
+*   Author           :  Venky Konda                                            *
+*   Description      :  This package creates the Balancing report for OTL      *
+*                                                                              *
+* HISTORY                                                                      *
+* Changed BY     Change Date   Version  Comments                               *
+* -------------  ------------  -------  ---------------------------------------*
+*  Venky        25-Dec-2009    115.0  Initial Version                        *
+*                                                                              *
+*******************************************************************************/
+   PROCEDURE debug_message (p_message VARCHAR2)
+   IS
+   BEGIN
+      xxarg_hr_util_pkg.debug_message (g_debug, p_message);
+   END;
+
+   PROCEDURE put_line (p_message VARCHAR2)
+   IS
+   BEGIN
+      gn_ln_ct := gn_ln_ct + 1;
+      
+      if (gn_ln_ct > gn_pg_size) then
+         gn_pg_no := gn_pg_no + 1;
+         gn_ln_ct := 0;
+         create_header;
+      end if;
+      fnd_file.put_line (fnd_file.output, p_message);
+   END;
+
+   PROCEDURE  create_file_header
+   IS
+   BEGIN
+
+      PUT_LINE('                                         Time File Load Data Results                                   Run Date ' || to_char(g_run_date,'MM/DD/YYYY'));
+      PUT_LINE('                                          Week End Date: ' || to_char(g_week_end_date,'MM/DD/YYYY') || '                                    Run Time ' || to_char(g_run_date,'HH:MM:SS'));
+   END create_file_header;
+
+   PROCEDURE create_mesg_header
+   IS
+   BEGIN
+      -- Blank Line
+      if (gn_ln_ct + 10 > gn_pg_size) then
+        gn_pg_no := gn_pg_no + 1;
+        gn_ln_ct := 0;
+        create_header;
+      end if;
+      put_line ('');
+      -- Message Header
+      put_line (   RPAD ('EmplNum', 11, ' ')
+                || RPAD ('NationalID', 16, ' ')
+--            ||rpad('Name' ,23 ,' ')
+--            ||rpad('',5,' ')
+                || RPAD ('EarnCode', 11, ' ')
+                || RPAD ('Date Worked', 14, ' ')
+                || RPAD ('Hours', 8, ' ')
+                || RPAD ('Amount', 8, ' ')
+                || 'Message'
+               );
+   END create_mesg_header;
+
+   PROCEDURE create_time_load_header
+   IS
+   BEGIN
+   if gn_ln_ct + 8 >= gn_pg_size then
+      gn_pg_no := gn_pg_no + 1;
+      gn_ln_ct := 0;
+      CREATE_HEADER();
+   end if;
+
+      -- Blank Line
+      put_line ('');
+      -- Message Header
+      put_line (   LPAD ('File', 25, ' ')
+                || LPAD ('Loaded', 15, ' ')
+                || '   '
+                || '---------------------Total Summary---------------------'
+               );
+      put_line (   LPAD ('Earn', 13, ' ')
+                || LPAD ('Employee', 14, ' ')
+                || LPAD ('Employee', 14, ' ')
+                || '  '
+                || '      File        File        Loaded        Loaded      '
+               );
+      put_line (   LPAD ('Code', 13, ' ')
+                || LPAD ('Count', 12, ' ')
+                || LPAD ('Count', 14, ' ')
+                || '    '
+                || '     Hours      Dollars        Hours       Dollars      '
+               );
+   END create_time_load_header;
+
+   PROCEDURE create_header
+   IS
+      lv_reg         VARCHAR2 (30);
+      lv_sr_div      VARCHAR2 (30);
+      lv_area_dist   VARCHAR2 (30);
+      lv_dist_area   VARCHAR2 (30);
+   BEGIN
+      gn_ln_ct := 0;
+      gn_pg_no_tmp := gn_pg_no;
+
+      IF gn_pg_no <> 0
+      THEN
+         put_line ('');
+      END IF;
+
+      IF g_wag_org = 'Wendys Stores'
+      THEN
+         lv_reg := 'Region  : ';
+         lv_sr_div := 'Division  : ';
+         lv_dist_area := 'Area    : ';
+         lv_area_dist := 'District  : ';
+      ELSE
+         lv_reg := 'Region  : ';
+         lv_sr_div := 'Sub-region: ';
+         lv_dist_area := 'District: ';
+         lv_area_dist := 'Area      : ';
+      END IF;
+
+      put_line
+         (   CHR (12)
+          || g_rep_name
+          || '                                   Wendy''s Arby''s Group                                       Page No.  '
+          || LPAD (gn_pg_no, 9, ' ')
+         );
+
+         put_line
+            (   '                                         Time File Load Data Results                                   Run Date '
+             || TO_CHAR (g_run_date, 'MM/DD/YYYY')
+            );
+         put_line
+               (   '                                          Week End Date: '
+                || TO_CHAR (g_week_end_date, 'MM/DD/YYYY')
+                || '                                    Run Time '
+                || TO_CHAR (g_run_date, 'HH:MM:SS')
+               );
+         put_line ('Payroll : ' || g_payroll_name);
+         put_line (   lv_reg
+                   || RPAD (NVL (g_region_name, ' '), 52, ' ')
+                   || lv_sr_div
+                   || g_sr_div_name
+                  );
+         put_line (   lv_dist_area
+                   || RPAD (NVL (g_dist_area_name, ' '), 52, ' ')
+                   || lv_area_dist
+                   || g_area_dist_name
+                  );
+   END create_header;
+
+   PROCEDURE print_dist_area_totals (
+      p_bus_grp_id      NUMBER,
+      p_start_date      DATE,
+      p_end_date        DATE,
+      p_wag_dist_area   NUMBER
+   )
+   IS
+      CURSOR c_get_org_id (cp_bus_grp_id NUMBER, cp_org_name VARCHAR2)
+      IS
+         SELECT organization_id
+           FROM xxarg.xxarg_hr_org_flat_hierarchy xxhier
+          WHERE organization_name = cp_org_name
+            AND business_group_id = cp_bus_grp_id;
+
+      CURSOR c_get_dist_area_totals (
+         cp_dis_area      NUMBER,
+         cp_wk_st_date    DATE,
+         cp_wk_end_date   DATE
+      )
+      IS
+         SELECT   earning_code, SUM (file_hours) file_hours,
+                  SUM (loaded_hours) loaded_hours,
+                  SUM (file_dollars) file_dollars,
+                  SUM (loaded_dollars) loaded_dollars,
+                  SUM (file_emp_count) file_emp_count,
+                  SUM (loaded_emp_count) loaded_emp_count
+             FROM (SELECT   NVL (xxmap.orc_earn_code1,
+                                 xxsumm.earning_code
+                                ) earning_code
+                                              -- nvl(max(xxmap.orc_earn_code1),xxsumm.earning_code) earning_code
+                            ,
+                            SUM (NVL (hours, 0)) file_hours,
+                            SUM (DECODE (status, 'S', NVL (hours, 0), 0)
+                                ) loaded_hours,
+                            SUM (NVL (amount, 0)) file_dollars,
+                            SUM (DECODE (status, 'S', NVL (amount, 0), 0)
+                                ) loaded_dollars,
+                            COUNT
+                               (DISTINCT NVL (TO_CHAR (person_id),
+                                              national_identifier
+                                             )
+                               ) file_emp_count,
+                            COUNT
+                               (DISTINCT DECODE (status,
+                                                 'S', NVL (TO_CHAR (person_id),
+                                                           national_identifier
+                                                          ),
+                                                 NULL
+                                                )
+                               ) loaded_emp_count
+                       FROM xxarg.xxarg_hr_time_summary_stg xxsumm,
+                            xxarg.xxarg_hr_tas_mapping_codes xxmap,
+                            xxarg.xxarg_hr_org_flat_hierarchy xxhier
+                      WHERE xxsumm.detail_flag = 'N'
+                        AND xxsumm.organization_id = xxhier.organization_id
+                        AND xxhier.wag_dist_area = cp_dis_area
+                        AND xxmap.system_source(+) = xxsumm.system_source
+                        AND xxmap.earning_code(+) = xxsumm.earning_code
+--                        AND NVL (xxsumm.balance_report, 'N') = 'P'
+                        AND cp_wk_end_date BETWEEN xxmap.effective_start_date(+) AND xxmap.effective_end_date(+)
+                        AND cp_wk_end_date BETWEEN xxhier.org_version_date_from
+                                               AND xxhier.org_version_date_to
+                        AND xxsumm.week_end_date BETWEEN cp_wk_st_date
+                                                     AND cp_wk_end_date
+                   -- group by xxsumm.earning_code
+                   GROUP BY NVL (xxmap.orc_earn_code1, xxsumm.earning_code)
+                   UNION
+                   SELECT   NVL (xxmap.orc_earn_code1,
+                                 xxdet.earning_code
+                                ) earning_code,
+                            SUM (hours) file_hours,
+                            SUM (DECODE (status, 'S', NVL (hours, 0), 0)
+                                ) loaded_hours,
+                            SUM (NVL (amount, 0)) file_dollars,
+                            SUM (DECODE (status, 'S', NVL (amount, 0), 0)
+                                ) loaded_dollars,
+                            COUNT
+                               (DISTINCT NVL (TO_CHAR (person_id),
+                                              national_identifier
+                                             )
+                               ) file_emp_count,
+                            COUNT
+                               (DISTINCT DECODE (status,
+                                                 'S', NVL (TO_CHAR (person_id),
+                                                           national_identifier
+                                                          ),
+                                                 NULL
+                                                )
+                               ) loaded_emp_count
+                       FROM xxarg.xxarg_hr_tas_mapping_codes xxmap,
+                            xxarg.xxarg_hr_time_details_stg xxdet,
+                            xxarg.xxarg_hr_org_flat_hierarchy xxhier
+                      WHERE xxhier.wag_dist_area = cp_dis_area
+                        AND xxdet.organization_id = xxhier.organization_id
+                        AND status IN ('S', 'E')
+                        AND xxdet.system_source = xxmap.system_source(+)
+                        AND xxdet.earning_code = xxmap.earning_code(+)
+--                        AND NVL (xxdet.balance_report, 'N') = 'P'
+                        AND cp_wk_end_date BETWEEN xxmap.effective_start_date(+) AND xxmap.effective_end_date(+)
+                        AND cp_wk_end_date BETWEEN xxhier.org_version_date_from
+                                               AND xxhier.org_version_date_to
+                        AND date_worked BETWEEN cp_wk_st_date AND cp_wk_end_date
+                   GROUP BY NVL (xxmap.orc_earn_code1, xxdet.earning_code))
+         GROUP BY earning_code;
+
+      CURSOR c_get_dist_area_count (
+         cp_dis_area      NUMBER,
+         cp_wk_st_date    DATE,
+         cp_wk_end_date   DATE
+      )
+      IS
+         SELECT SUM (file_emp_count) file_emp_count,
+                SUM (loaded_emp_count) loaded_emp_count
+           FROM (SELECT COUNT
+                            (DISTINCT NVL (TO_CHAR (person_id),
+                                           national_identifier
+                                          )
+                            ) file_emp_count,
+                        COUNT
+                           (DISTINCT DECODE (status,
+                                             'S', NVL (TO_CHAR (person_id),
+                                                       national_identifier
+                                                      ),
+                                             NULL
+                                            )
+                           ) loaded_emp_count
+                   FROM xxarg.xxarg_hr_time_summary_stg xxsumm,
+                        xxarg.xxarg_hr_tas_mapping_codes xxmap,
+                        xxarg.xxarg_hr_org_flat_hierarchy xxhier
+                  WHERE xxsumm.detail_flag = 'N'
+                    AND xxsumm.organization_id = xxhier.organization_id
+                    AND xxhier.wag_dist_area = cp_dis_area
+                    AND xxmap.system_source(+) = xxsumm.system_source
+                    AND xxmap.earning_code(+) = xxsumm.earning_code
+--                    AND NVL (xxsumm.balance_report, 'N') = 'P'
+                    AND cp_wk_end_date BETWEEN xxmap.effective_start_date(+) AND xxmap.effective_end_date(+)
+                    AND cp_wk_end_date BETWEEN xxhier.org_version_date_from
+                                           AND xxhier.org_version_date_to
+                    AND xxsumm.week_end_date BETWEEN cp_wk_st_date
+                                                 AND cp_wk_end_date
+                 UNION
+                 SELECT COUNT
+                            (DISTINCT NVL (TO_CHAR (person_id),
+                                           national_identifier
+                                          )
+                            ) file_emp_count,
+                        COUNT
+                           (DISTINCT DECODE (status,
+                                             'S', NVL (TO_CHAR (person_id),
+                                                       national_identifier
+                                                      ),
+                                             NULL
+                                            )
+                           ) loaded_emp_count
+                   FROM xxarg.xxarg_hr_tas_mapping_codes xxmap,
+                        xxarg.xxarg_hr_time_details_stg xxdet,
+                        xxarg.xxarg_hr_org_flat_hierarchy xxhier
+                  WHERE xxhier.wag_dist_area = cp_dis_area
+                    AND xxdet.organization_id = xxhier.organization_id
+                    AND status IN ('S', 'E')
+                    AND xxdet.system_source = xxmap.system_source(+)
+                    AND xxdet.earning_code = xxmap.earning_code(+)
+--                    AND NVL (xxdet.balance_report, 'N') = 'P'
+                    AND cp_wk_end_date BETWEEN xxmap.effective_start_date(+) AND xxmap.effective_end_date(+)
+                    AND cp_wk_end_date BETWEEN xxhier.org_version_date_from
+                                           AND xxhier.org_version_date_to
+                    AND date_worked BETWEEN cp_wk_st_date AND cp_wk_end_date);
+
+      ln_dist_area              NUMBER;
+      lc_get_dist_area_totals   c_get_dist_area_totals%ROWTYPE;
+      lt_dist_area              record_type                      := NULL;
+   BEGIN
+      lt_dist_area.file_emp_count := 0;
+      lt_dist_area.loaded_emp_count := 0;
+      lt_dist_area.file_hours := 0;
+      lt_dist_area.loaded_hours := 0;
+      lt_dist_area.file_dollars := 0;
+      lt_dist_area.loaded_dollars := 0;
+
+    --- Create Header
+--   create_totals_header();
+      put_line ('');
+
+      IF g_wag_org = 'Wendys Stores'
+      THEN
+         put_line (LPAD ('A R E A', 48, ' ') || '   T O T A L S');
+      ELSE
+         put_line (LPAD ('D I S T R I C T', 48, ' ') || '   T O T A L S');
+      END IF;
+
+      create_time_load_header ();
+      ln_dist_area := p_wag_dist_area;
+      debug_message ('Start Dist/Area Totals for ' || ln_dist_area || ' : 100');
+
+      OPEN c_get_dist_area_totals (ln_dist_area, p_start_date, p_end_date);
+
+      LOOP
+         debug_message ('Printing Dist Totals : 101');
+
+         FETCH c_get_dist_area_totals
+          INTO lc_get_dist_area_totals;
+
+         EXIT WHEN c_get_dist_area_totals%NOTFOUND;
+         put_line
+               (   LPAD (NVL (lc_get_dist_area_totals.earning_code, ' '),
+                         17,
+                         ' '
+                        )
+                || LPAD (lc_get_dist_area_totals.file_emp_count, 7, ' ')
+                || LPAD (lc_get_dist_area_totals.loaded_emp_count, 14, ' ')
+                || LPAD (TRIM (TO_CHAR (lc_get_dist_area_totals.file_hours,
+                                        '9999990.99'
+                                       )
+                              ),
+                         15,
+                         ' '
+                        )
+                || LPAD (TRIM (TO_CHAR (lc_get_dist_area_totals.file_dollars,
+                                        '9999990.99'
+                                       )
+                              ),
+                         13,
+                         ' '
+                        )
+                || LPAD (TRIM (TO_CHAR (lc_get_dist_area_totals.loaded_hours,
+                                        '9999990.99'
+                                       )
+                              ),
+                         13,
+                         ' '
+                        )
+                || LPAD
+                      (TRIM (TO_CHAR (lc_get_dist_area_totals.loaded_dollars,
+                                      '9999990.99'
+                                     )
+                            ),
+                       14,
+                       ' '
+                      )
+               );
+         lt_dist_area.file_hours :=
+                  lt_dist_area.file_hours + lc_get_dist_area_totals.file_hours;
+         lt_dist_area.loaded_hours :=
+              lt_dist_area.loaded_hours + lc_get_dist_area_totals.loaded_hours;
+         lt_dist_area.file_dollars :=
+              lt_dist_area.file_dollars + lc_get_dist_area_totals.file_dollars;
+         lt_dist_area.loaded_dollars :=
+              lt_dist_area.loaded_dollars
+            + lc_get_dist_area_totals.loaded_dollars;
+      END LOOP;
+
+      CLOSE c_get_dist_area_totals;
+
+      put_line ('');
+
+      -- Get District Employee Count
+      OPEN c_get_dist_area_count (ln_dist_area, p_start_date, p_end_date);
+
+      FETCH c_get_dist_area_count
+       INTO lt_dist_area.file_emp_count, lt_dist_area.loaded_emp_count;
+
+      CLOSE c_get_dist_area_count;
+
+      put_line (   'Total'
+                || RPAD (' ', 12, ' ')
+                || LPAD (lt_dist_area.file_emp_count, 7, ' ')
+                || LPAD (lt_dist_area.loaded_emp_count, 14, ' ')
+                || LPAD (TRIM (TO_CHAR (lt_dist_area.file_hours, '9999990.99')),
+                         15,
+                         ' '
+                        )
+                || LPAD (TRIM (TO_CHAR (lt_dist_area.file_dollars,
+                                        '9999990.99'
+                                       )
+                              ),
+                         13,
+                         ' '
+                        )
+                || LPAD (TRIM (TO_CHAR (lt_dist_area.loaded_hours,
+                                        '9999990.99'
+                                       )
+                              ),
+                         13,
+                         ' '
+                        )
+                || LPAD (TRIM (TO_CHAR (lt_dist_area.loaded_dollars,
+                                        '9999990.99'
+                                       )
+                              ),
+                         14,
+                         ' '
+                        )
+               );
+      put_line ('');
+      put_line (RPAD ('=', 110, '='));
+      debug_message ('Finish Dist/Area Totals : 100');
+   END;
+
+   PROCEDURE gen_otl_bal_rep (
+      errbuf         OUT      VARCHAR2,
+      retcode        OUT      VARCHAR2,
+      p_bus_grp_id   IN       NUMBER,
+      p_payroll_id   IN       NUMBER,
+      p_area_dist    IN       NUMBER,
+      p_eff_date     IN       VARCHAR2
+   )
+   IS
+-- Cursor to get organization name
+      CURSOR c_get_org_name (cp_org_id NUMBER)
+      IS
+         SELECT *                                         --organization_name
+--      ,wag_organization_desc
+         FROM   xxarg.xxarg_hr_org_flat_hierarchy
+          WHERE organization_id = cp_org_id;
+
+-- Cursor to check whether time has been transferred for the Payroll and week
+      CURSOR c_chk_time_transer (
+         cp_pay_id        NUMBER,
+         cp_wk_str_date   DATE,
+         cp_wk_end_date   DATE
+      )
+      IS
+         SELECT SUM (rec)
+           FROM (SELECT COUNT (*) rec
+                   FROM xxarg.xxarg_hr_time_summary_stg
+                  WHERE payroll_id = cp_pay_id
+                    AND week_end_date = cp_wk_end_date
+                 UNION
+                 SELECT COUNT (*) rec
+                   FROM xxarg.xxarg_hr_time_details_stg
+                  WHERE payroll_id = cp_pay_id
+                    AND date_worked BETWEEN cp_wk_str_date AND cp_wk_end_date);
+
+      CURSOR c_store_loop (
+         cp_bus_grp       NUMBER,
+         cp_pay_id        NUMBER,
+         cp_dist_area     NUMBER,
+         cp_wk_st_date    DATE,
+         cp_wk_end_date   DATE
+      )
+      IS
+         SELECT   xxflat.organization_name, wag_organization_desc,
+                  wag_region_desc, wag_sr_div_desc, wag_dist_area_desc,
+                  wag_area_dist_desc, wag_store_dept_desc,
+                  xxflat.organization_id, wag_dist_area
+             FROM xxarg.xxarg_hr_org_flat_hierarchy xxflat,
+                  hr_organization_units hro,
+                  hr_locations_all hl,
+                  pay_payrolls_f ppf
+            WHERE 1 = 1
+              AND (cp_dist_area IS NULL OR wag_dist_area = cp_dist_area)
+              AND xxflat.payroll_id = cp_pay_id
+              AND xxflat.business_group_id = cp_bus_grp
+              AND hr_org_flag = 'Y'
+              AND hro.organization_id = xxflat.organization_id
+              AND cp_wk_end_date BETWEEN xxflat.date_from AND xxflat.date_to
+              AND cp_wk_end_date BETWEEN hro.date_from
+                                     AND NVL (hro.date_to,
+                                              hr_general.end_of_time
+                                             )
+              AND (((HRO.name like 'Wendys%' and ppf.payroll_name in ('WENBW1','WENBW2','WENWKLY')) or (ppf.payroll_name not in ('WENBW1','WENBW2','WENWKLY') and ppf.business_group_id = 0))
+                    OR
+                   ((HRO.name like 'Wenca 0%' or HRO.name like 'Wenca 1%') and ppf.business_group_id != 0))
+              AND hro.location_id = hl.location_id
+              AND xxflat.payroll_id = ppf.payroll_id
+              AND TRUNC(sysdate) between ppf.effective_start_date and ppf.effective_end_date
+              AND TRUNC (SYSDATE) BETWEEN org_version_date_from
+                                      AND org_version_date_to
+         ORDER BY wag_region_desc,wag_sr_div_desc, wag_dist_area_desc, wag_area_dist_desc, wag_store_dept_desc;
+
+      CURSOR c_get_store_load_time (
+         cp_org_id     NUMBER,
+         wk_st_date    DATE,
+         wk_end_date   DATE
+      )
+      IS
+         SELECT   earning_code, SUM (file_hours) file_hours,
+                  SUM (loaded_hours) loaded_hours,
+                  SUM (file_dollars) file_dollars,
+                  SUM (loaded_dollars) loaded_dollars,
+                  SUM (file_emp_count) file_emp_count,
+                  SUM (loaded_emp_count) loaded_emp_count
+             FROM (SELECT   NVL (xxmap.orc_earn_code1,
+                                 xxsumm.earning_code
+                                ) earning_code,
+                            SUM (NVL (hours, 0)) file_hours,
+                            SUM (DECODE (status, 'S', NVL (hours, 0), 0)
+                                ) loaded_hours,
+                            SUM (NVL (amount, 0)) file_dollars,
+                            SUM (DECODE (status, 'S', NVL (amount, 0), 0)
+                                ) loaded_dollars,
+                            COUNT
+                               (DISTINCT NVL (TO_CHAR (person_id),
+                                              national_identifier
+                                             )
+                               ) file_emp_count,
+                            COUNT
+                               (DISTINCT DECODE (status,
+                                                 'S', NVL (TO_CHAR (person_id),
+                                                           national_identifier
+                                                          ),
+                                                 NULL
+                                                )
+                               ) loaded_emp_count
+                       FROM xxarg.xxarg_hr_time_summary_stg xxsumm,
+                            xxarg.xxarg_hr_tas_mapping_codes xxmap
+                      WHERE xxsumm.detail_flag = 'N'
+                        AND organization_id = cp_org_id
+                        AND xxmap.system_source(+) = xxsumm.system_source
+                        AND xxmap.earning_code(+) = xxsumm.earning_code
+--                        AND NVL (xxsumm.balance_report, 'N') = 'N'
+                        AND wk_end_date BETWEEN xxmap.effective_start_date(+) AND xxmap.effective_end_date(+)
+                        AND xxsumm.week_end_date BETWEEN wk_st_date
+                                                     AND wk_end_date
+                   -- group by xxsumm.earning_code
+                   GROUP BY NVL (xxmap.orc_earn_code1, xxsumm.earning_code)
+                   UNION ALL
+                   SELECT   NVL (xxmap.orc_earn_code1,
+                                 xxdet.earning_code
+                                ) earning_code,
+                            SUM (NVL (hours, 0)) file_hours,
+                            SUM (DECODE (status, 'S', NVL (hours, 0), 0)
+                                ) loaded_hours,
+                            SUM (NVL (amount, 0)) file_dollars,
+                            SUM (DECODE (status, 'S', NVL (amount, 0), 0)
+                                ) loaded_dollars,
+                            COUNT
+                               (DISTINCT NVL (TO_CHAR (person_id),
+                                              national_identifier
+                                             )
+                               ) file_emp_count,
+                            COUNT
+                               (DISTINCT DECODE (status,
+                                                 'S', NVL (TO_CHAR (person_id),
+                                                           national_identifier
+                                                          ),
+                                                 NULL
+                                                )
+                               ) loaded_emp_count
+                       FROM xxarg.xxarg_hr_tas_mapping_codes xxmap,
+                            xxarg.xxarg_hr_time_details_stg xxdet
+                      WHERE xxdet.organization_id = cp_org_id
+                        AND status IN ('S', 'E')
+                        AND xxdet.system_source = xxmap.system_source(+)
+                        AND xxdet.earning_code = xxmap.earning_code(+)
+--                        AND NVL (xxdet.balance_report, 'N') = 'N'
+                        AND wk_end_date BETWEEN xxmap.effective_start_date(+) AND xxmap.effective_end_date(+)
+                        AND date_worked BETWEEN wk_st_date AND wk_end_date
+                   -- group by xxdet.earning_code;
+                   GROUP BY NVL (xxmap.orc_earn_code1, xxdet.earning_code))
+         GROUP BY earning_code;
+
+      CURSOR c_get_store_rec_ct (
+         cp_org_id     NUMBER,
+         wk_st_date    DATE,
+         wk_end_date   DATE
+      )
+      IS
+         SELECT SUM (rec) rec, SUM (file_emp_count) file_emp_count,
+                SUM (loaded_emp_count) loaded_emp_count
+           FROM (SELECT COUNT (*) rec,
+                        COUNT
+                            (DISTINCT NVL (TO_CHAR (person_id),
+                                           national_identifier
+                                          )
+                            ) file_emp_count,
+                        COUNT
+                           (DISTINCT DECODE (status,
+                                             'S', NVL (TO_CHAR (person_id),
+                                                       national_identifier
+                                                      ),
+                                             NULL
+                                            )
+                           ) loaded_emp_count
+                   FROM xxarg.xxarg_hr_time_summary_stg xxsumm,
+                        xxarg.xxarg_hr_tas_mapping_codes xxmap
+                  WHERE xxsumm.detail_flag = 'N'
+                    AND organization_id = cp_org_id
+                    AND xxmap.system_source(+) = xxsumm.system_source
+                    AND xxmap.earning_code(+) = xxsumm.earning_code
+--                    AND NVL (xxsumm.balance_report, 'N') = 'N'
+                    AND wk_end_date BETWEEN xxmap.effective_start_date(+) AND xxmap.effective_end_date(+)
+                    AND xxsumm.week_end_date BETWEEN wk_st_date AND wk_end_date
+                 UNION ALL
+                 SELECT COUNT (*) rec,
+                        COUNT
+                            (DISTINCT NVL (TO_CHAR (person_id),
+                                           national_identifier
+                                          )
+                            ) file_emp_count,
+                        COUNT
+                           (DISTINCT DECODE (status,
+                                             'S', NVL (TO_CHAR (person_id),
+                                                       national_identifier
+                                                      ),
+                                             NULL
+                                            )
+                           ) loaded_emp_count
+                   FROM xxarg.xxarg_hr_tas_mapping_codes xxmap,
+                        xxarg.xxarg_hr_time_details_stg xxdet
+                  WHERE xxdet.organization_id = cp_org_id
+                    AND status IN ('S', 'E')
+                    AND xxdet.system_source = xxmap.system_source(+)
+                    AND xxdet.earning_code = xxmap.earning_code(+)
+--                    AND NVL (xxdet.balance_report, 'N') = 'N'
+                    AND wk_end_date BETWEEN xxmap.effective_start_date(+) AND xxmap.effective_end_date(+)
+                    AND date_worked BETWEEN wk_st_date AND wk_end_date);
+
+      CURSOR c_get_store_error (
+         cp_org_id     NUMBER,
+         wk_st_date    DATE,
+         wk_end_date   DATE
+      )
+      IS
+         SELECT   NVL (MAX (papf.employee_number),
+                       xxsumm.employee_number
+                      ) employee_number,
+                  NVL (MAX (papf.national_identifier),
+                       xxsumm.national_identifier
+                      ) national_identifier,
+                  NVL (MAX (xxmap.orc_earn_code1),
+                       xxsumm.earning_code
+                      ) earning_code,
+                  MAX (papf.full_name) full_name, SUM (NVL (hours, 0)) hours,
+                  SUM (NVL (amount, 0)) amount,
+                  MAX (xxsumm.error_message) error_message,
+                  xxsumm.week_end_date date_worked
+             FROM xxarg.xxarg_hr_time_summary_stg xxsumm,
+                  per_all_people_f papf,
+                  xxarg.xxarg_hr_tas_mapping_codes xxmap
+            WHERE xxsumm.detail_flag = 'N'
+              AND xxsumm.person_id = papf.person_id(+)
+              AND xxsumm.system_source = xxmap.system_source(+)
+              AND xxsumm.earning_code = xxmap.earning_code(+)
+              AND xxsumm.status = 'E'
+              AND xxsumm.organization_id = cp_org_id
+              AND week_end_date BETWEEN wk_st_date AND wk_end_date
+              AND week_end_date BETWEEN papf.effective_start_date(+) AND papf.effective_end_date(+)
+              AND week_end_date BETWEEN xxmap.effective_start_date(+) AND xxmap.effective_end_date(+)
+         GROUP BY xxsumm.national_identifier,
+                  xxsumm.employee_number,
+                  xxsumm.earning_code,
+                  xxsumm.week_end_date
+         UNION ALL
+         SELECT   MAX (papf.employee_number) employee_number,
+                  NVL (MAX (papf.national_identifier),
+                       xxdet.national_identifier
+                      ) national_identifier,
+                  NVL (MAX (xxmap.orc_earn_code1),
+                       xxdet.earning_code
+                      ) earning_code,
+                  MAX (papf.full_name) full_name, SUM (NVL (hours, 0)) hours,
+                  SUM (NVL (amount, 0)) amount,
+                  MAX (xxdet.error_message) error_message, xxdet.date_worked
+             FROM xxarg.xxarg_hr_time_details_stg xxdet,
+                  per_all_people_f papf,
+                  xxarg.xxarg_hr_tas_mapping_codes xxmap
+            WHERE xxdet.person_id = papf.person_id(+)
+              AND xxdet.system_source = xxmap.system_source(+)
+              AND xxdet.earning_code = xxmap.earning_code(+)
+              AND xxdet.status = 'E'
+              AND xxdet.organization_id = cp_org_id
+              AND xxdet.date_worked BETWEEN wk_st_date AND wk_end_date
+              AND xxdet.date_worked BETWEEN papf.effective_start_date(+) AND papf.effective_end_date(+)
+              AND xxdet.date_worked BETWEEN xxmap.effective_start_date(+) AND xxmap.effective_end_date(+)
+         GROUP BY xxdet.national_identifier,
+                  xxdet.earning_code,
+                  xxdet.date_worked;
+
+      CURSOR csr_get_payroll_det (p_payroll_id NUMBER)
+      IS
+         SELECT payroll_name
+           FROM pay_payrolls_f
+          WHERE payroll_id = p_payroll_id;
+
+      l_prev_region            VARCHAR2 (80);
+      l_prev_sr_div            VARCHAR2 (80);
+      l_prev_dist_area         VARCHAR2 (80);
+      l_prev_area_dist         VARCHAR2 (80);
+      l_prev_store_dept        VARCHAR2 (80);
+      l_prev_dist_area_id      NUMBER;
+      ln_rec_ct                NUMBER;
+      ln_store_rec_count       NUMBER;
+      ln_loop_count            NUMBER;
+      ln_cur_loop_count        NUMBER;
+      ld_cur_wk_st_date        DATE;
+      ld_cur_wk_end_date       DATE;
+      ld_wk1_str_date          DATE;
+      ld_wk1_end_date          DATE;
+      ld_wk2_str_date          DATE;
+      ld_wk2_end_date          DATE;
+      ld_per_end_date          DATE;
+      ld_eff_date              DATE;
+      lc_get_store_error       c_get_store_error%ROWTYPE;
+      lc_get_store_load_time   c_get_store_load_time%ROWTYPE;
+      lv_err_msg               VARCHAR2(200);
+   BEGIN
+      debug_message ('Entering GEN_OTL_BAL_REP');
+      
+   -- Initialize Global variables
+   gn_pg_no       := 1;
+   gn_pg_no_tmp   := 0;
+   gn_pg_size     := 60; -- 60 lines in one page
+   gn_ln_ct       := 0;
+      g_run_date := sysdate;
+
+      -- Set Effective Date
+      ld_eff_date := fnd_date.canonical_to_date (p_eff_date);
+      ld_cur_wk_end_date := ld_eff_date;
+      ld_cur_wk_st_date := ld_eff_date - 6;
+      
+      g_week_end_date := ld_eff_date;
+
+      OPEN csr_get_payroll_det (p_payroll_id);
+
+      FETCH csr_get_payroll_det
+       INTO g_payroll_name;
+
+      CLOSE csr_get_payroll_det;
+
+      l_prev_region := NULL;
+      l_prev_sr_div := NULL;
+      l_prev_dist_area := NULL;
+      l_prev_area_dist := NULL;
+      l_prev_store_dept := NULL;
+
+      -- Get the stores in the given payroll and/or area/dist
+      FOR stores IN c_store_loop (p_bus_grp_id,
+                                  p_payroll_id,
+                                  p_area_dist,
+                                  ld_cur_wk_st_date,
+                                  ld_cur_wk_end_date
+                                 )
+      LOOP
+         IF (l_prev_region IS NULL)
+         THEN
+            l_prev_region := stores.wag_region_desc;
+            l_prev_sr_div := stores.wag_sr_div_desc;
+            l_prev_dist_area := stores.wag_dist_area_desc;
+            l_prev_area_dist := stores.wag_area_dist_desc;
+            l_prev_store_dept := stores.wag_store_dept_desc;
+            l_prev_dist_area_id := stores.wag_dist_area;
+            g_region_name := stores.wag_region_desc;
+            g_sr_div_name := stores.wag_sr_div_desc;
+            g_dist_area_name := stores.wag_dist_area_desc;
+            g_area_dist_name := stores.wag_dist_area_desc;
+            g_wag_org := stores.wag_organization_desc;
+
+            create_header;
+         END IF;
+         
+         if (l_prev_dist_area != stores.wag_dist_area_desc) then
+             print_dist_area_totals(p_bus_grp_id => p_bus_grp_id,p_start_date => ld_cur_wk_st_date,p_end_date => ld_cur_wk_end_date,p_wag_dist_area => l_prev_dist_area_id);
+
+            g_region_name := stores.wag_region_desc;
+            g_sr_div_name := stores.wag_sr_div_desc;
+            g_dist_area_name := stores.wag_dist_area_desc;
+            g_area_dist_name := stores.wag_dist_area_desc;
+             gn_pg_no := gn_pg_no + 1;
+             gn_ln_ct := 0;
+             create_header;
+         elsif (l_prev_area_dist != stores.wag_area_dist_desc) then
+            g_region_name := stores.wag_region_desc;
+            g_sr_div_name := stores.wag_sr_div_desc;
+            g_dist_area_name := stores.wag_dist_area_desc;
+            g_area_dist_name := stores.wag_dist_area_desc;
+             gn_pg_no := gn_pg_no + 1;
+             gn_ln_ct := 0;
+             create_header;
+         end if;
+         -- Blank Line
+
+         if (stores.wag_store_dept_desc is not null) then
+         put_line ('');
+         PUT_LINE('Department: ' || rpad(stores.wag_store_dept_desc,50,' '));
+         end if;
+         gt_dept.file_emp_count := 0;
+         gt_dept.loaded_emp_count := 0;
+
+         OPEN c_get_store_rec_ct (stores.organization_id,
+                                  ld_cur_wk_st_date,
+                                  ld_cur_wk_end_date
+                                 );
+
+         FETCH c_get_store_rec_ct
+          INTO ln_store_rec_count, gt_dept.file_emp_count,
+               gt_dept.loaded_emp_count;
+
+         CLOSE c_get_store_rec_ct;
+
+         IF (ln_store_rec_count > 0)
+         THEN
+                     create_mesg_header;
+
+                     DEBUG_MESSAGE('Get Store Error Count : 60');
+                     -- Loop Through error messages
+                     open c_get_store_error(stores.organization_id
+                                           ,ld_cur_wk_st_date
+                                           ,ld_cur_wk_end_date);
+                     fetch c_get_store_error into lc_get_store_error;
+                     if c_get_store_error%notfound then
+                        PUT_LINE(rpad(' ',60,' ') || 'No exceptions found for Department');
+                     else
+                        loop
+                           lv_err_msg := substr(lc_get_store_error.error_message
+                                               ,0
+                                               ,instr(lc_get_store_error.error_message || chr(10)
+                                                     , chr(10)) - 1);
+
+                           PUT_LINE(rpad(nvl(lc_get_store_error.employee_number,' '),11,' ')
+                                    ||rpad(nvl(lc_get_store_error.national_identifier,' '),13,' ')
+                                    || '   '
+                                    ||rpad(nvl(lc_get_store_error.earning_code,' '),11,' ')
+                                    ||to_char(lc_get_store_error.date_worked,'DD-MON-YYYY')
+                                    ||lpad(trim(to_char(lc_get_store_error.hours,'9999990.99')),8,' ')
+                                    ||lpad(trim(to_char(lc_get_store_error.amount,'9999990.99')),9,' ')
+                                    || '  '
+                                    ||lv_err_msg);
+                           fetch c_get_store_error into lc_get_store_error;
+                           exit when c_get_store_error%notfound;
+                        end loop;
+                     end if; -- if c_get_store_error%notfound
+                     close c_get_store_error;
+                     DEBUG_MESSAGE('Finish Store Error Count : 60');
+                     
+                     create_time_load_header;
+
+                     gt_dept.file_hours       := 0;
+                     gt_dept.loaded_hours     := 0;
+                     gt_dept.file_dollars     := 0;
+                     gt_dept.loaded_dollars   := 0;
+
+                     DEBUG_MESSAGE('Get Store Load Time : 70');
+                     -- Loop through time loaded for each earning code
+                     open c_get_store_load_time(stores.organization_id
+                                               ,ld_cur_wk_st_date
+                                               ,ld_cur_wk_end_date);
+                     loop
+                        fetch c_get_store_load_time into lc_get_store_load_time;
+                        exit when c_get_store_load_time%notfound;
+
+                        PUT_LINE(lpad(nvl(lc_get_store_load_time.earning_code,' '),17,' ')
+                               ||lpad(lc_get_store_load_time.file_emp_count,7,' ')
+                               ||lpad(lc_get_store_load_time.loaded_emp_count,14,' ')
+                               ||lpad(trim(to_char(lc_get_store_load_time.file_hours,'9999990.99')),15,' ')
+                               ||lpad(trim(to_char(lc_get_store_load_time.file_dollars,'9999990.99')),13,' ')
+                               ||lpad(trim(to_char(lc_get_store_load_time.loaded_hours,'9999990.99')),13,' ')
+                               ||lpad(trim(to_char(lc_get_store_load_time.loaded_dollars,'9999990.99')),14,' ')
+                               );
+
+/*                        gt_dept.file_emp_count   := gt_dept.file_emp_count +
+                                      lc_get_store_load_time.file_emp_count;
+                        gt_dept.loaded_emp_count := gt_dept.loaded_emp_count +
+                                      lc_get_store_load_time.loaded_emp_count;*/
+                        gt_dept.file_hours       := gt_dept.file_hours +
+                                      lc_get_store_load_time.file_hours;
+                        gt_dept.loaded_hours     := gt_dept.loaded_hours +
+                                      lc_get_store_load_time.loaded_hours;
+                        gt_dept.file_dollars     := gt_dept.file_dollars +
+                                      lc_get_store_load_time.file_dollars;
+                        gt_dept.loaded_dollars   := gt_dept.loaded_dollars +
+                                      lc_get_store_load_time.loaded_dollars;
+
+                     end loop;
+                     close c_get_store_load_time;
+                     DEBUG_MESSAGE('Finish Store Load Time : 70');
+                     PUT_LINE('');
+
+                     PUT_LINE('Total'
+                               ||rpad(' ',12,' ')
+                               ||lpad(gt_dept.file_emp_count,7,' ')
+                               ||lpad(gt_dept.loaded_emp_count,14,' ')
+                               ||lpad(trim(to_char(gt_dept.file_hours,'9999990.99')),15,' ')
+                               ||lpad(trim(to_char(gt_dept.file_dollars,'9999990.99')),13,' ')
+                               ||lpad(trim(to_char(gt_dept.loaded_hours,'9999990.99')),13,' ')
+                               ||lpad(trim(to_char(gt_dept.loaded_dollars,'9999990.99')),14,' ')
+                               );
+                     PUT_LINE(rpad('=',110,'='));
+
+
+         ELSif (stores.organization_id is not null) then
+            put_line ('');
+            put_line ('No Time loaded for the Store/Department.');
+            put_line (RPAD ('=', 110, '='));
+         END IF;
+
+         l_prev_region := stores.wag_region_desc;
+         l_prev_sr_div := stores.wag_sr_div_desc;
+         l_prev_dist_area := stores.wag_dist_area_desc;
+         l_prev_area_dist := stores.wag_area_dist_desc;
+         l_prev_store_dept := stores.wag_store_dept_desc;
+         l_prev_dist_area_id := stores.wag_dist_area;
+         
+         g_region_name := stores.wag_region_desc;
+         g_sr_div_name := stores.wag_sr_div_desc;
+         g_dist_area_name := stores.wag_dist_area_desc;
+         g_area_dist_name := stores.wag_area_dist_desc;
+         g_store_dept_name := stores.wag_store_dept_desc;
+         
+      END LOOP;
+         print_dist_area_totals(p_bus_grp_id => p_bus_grp_id,p_start_date => ld_cur_wk_st_date,p_end_date => ld_cur_wk_end_date,p_wag_dist_area => l_prev_dist_area_id);
+         
+         if (p_area_dist is null) then
+           -- Print payroll totals;
+           null;
+         end if;
+      
+   END gen_otl_bal_rep;
+END xxarg_hr_otl_new_bal_rep_pkg;
+

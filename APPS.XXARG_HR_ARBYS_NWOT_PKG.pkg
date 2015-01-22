@@ -1,0 +1,682 @@
+CREATE OR REPLACE PACKAGE XXARG_HR_ARBYS_NWOT_PKG
+AUTHID CURRENT_USER AS
+/*******************************************************************************
+*         $Header: xxarg_hr_arbys_nwot_pkg.pkh 115.0 22-Sep-2009 vkonda $      *
+*             Copyright (c) 2009, by Wendy's Arby's Group                      *
+*                                                                              *
+*   Package Name     :  XXARG_HR_ARBYS_NWOT_PKG                                *
+*   Author           :  Venky Konda                                            *
+*   Description      :  This package is used to calculate non-worked overtime  *
+*                       for flux employees and California managers. NWOT is    *
+*                       added to employee's OTLR timecard                      *
+*                                                                              *
+* HISTORY                                                                      *
+* Changed BY     Change Date   Version  Comments                               *
+* -------------  ------------  -------  ---------------------------------------*
+*  Venky          22-Sep-2009    115.0  Initial Version                        *
+*                                                                              *
+*******************************************************************************/
+   PROCEDURE calculate_nwot (
+      p_errbuff      OUT VARCHAR2,
+      p_retcode      OUT NUMBER,
+      p_payroll_id   NUMBER
+   );
+END xxarg_hr_arbys_nwot_pkg;
+
+
+
+
+/
+CREATE OR REPLACE PACKAGE BODY XXARG_HR_ARBYS_NWOT_PKG
+AS
+/*******************************************************************************
+*         $Header: xxarg_hr_arbys_nwot_pkg.pkb 115.0 22-Sep-2009 vkonda $      *
+*             Copyright (c) 2009, by Wendy's Arby's Group                      *
+*                                                                              *
+*   Package Name     :  XXARG_HR_ARBYS_NWOT_PKG                                *
+*   Author           :  Venky Konda                                            *
+*   Description      :  This package is used to calculate non-worked overtime  *
+*                       for flux employees and California managers. NWOT is    *
+*                       added to employee's OTLR timecard                      *
+*                                                                              *
+* HISTORY                                                                      *
+* Changed BY     Change Date   Version  Comments                               *
+* -------------  ------------  -------  ---------------------------------------*
+*  Venky          22-Sep-2009    115.0  Initial Version                        *
+*                                                                              *
+*******************************************************************************/
+
+   g_debug     BOOLEAN;
+   g_package   VARCHAR2 (30) := 'XXARG_HR_ARBYS_NWOT_PKG.';
+
+/*******************************************************************************
+    Name         :   DEBUG_TRACE
+    Scope        :   LOCAL
+    Descirption  :   This function is used to take trace in case of issues
+
+*******************************************************************************/
+   PROCEDURE debug_trace (p_message VARCHAR2)
+   IS
+   BEGIN
+      IF (g_debug)
+      THEN
+         --hr_utility.TRACE (p_message);
+         DBMS_OUTPUT.put_line (p_message);
+         fnd_file.put_line (fnd_file.LOG, p_message);
+      END IF;
+   END debug_trace;
+
+/*******************************************************************************
+    Name         :   CALCULATE_FLUX_NWOT
+    Scope        :   LOCAL
+    Descirption  :   This procedure calcualates non-worked overtime for flux
+                     employees. Flux employees are get weekly non-worked overtime
+                     only. Non-worked overtime is amended to the OTLR timecard.
+                     Non-Worked hours are calculated for all the earning codes
+                     listed in the lookup 'XXARG_NWOT_PROC_ORDER' in the same
+                     order.
+
+*******************************************************************************/
+   PROCEDURE calculate_flux_nwot (p_payroll_id NUMBER, p_retcode IN OUT NUMBER)
+   IS
+      -- Get open payroll period from the control table
+      CURSOR csr_get_ctrl_tbl
+      IS
+         SELECT *
+           FROM xxarg.xxarg_hr_otl_ctrl_tbl
+          WHERE payroll_id = p_payroll_id AND payroll_run = 'N';
+
+      -- Get the time period id
+      CURSOR csr_get_ptp_id (p_period_end_date DATE)
+      IS
+         SELECT ptp.time_period_id
+           FROM per_time_periods ptp
+          WHERE ptp.payroll_id = p_payroll_id
+            AND ptp.end_date = p_period_end_date;
+
+      -- Cursor to get flux employees in the given payroll
+      CURSOR csr_get_flux_tim (p_time_period_id NUMBER, p_week_end_date date)
+      IS
+         SELECT DISTINCT tim.ID, tim.for_person_id, tim.time_period_id
+                    FROM hxt_timecards_f tim,
+                         per_all_people_f ppf,
+                         per_all_assignments_f paf,
+                         per_time_periods ptp
+                   WHERE tim.payroll_id = p_payroll_id
+                     AND tim.time_period_id = p_time_period_id
+                     AND tim.for_person_id = ppf.person_id
+                     AND ppf.person_id = paf.person_id
+                     AND ptp.time_period_id = p_time_period_id
+                     AND p_week_end_date BETWEEN ppf.effective_start_date
+                                                AND ppf.effective_end_date
+                     AND p_week_end_date BETWEEN paf.effective_start_date
+                                                AND paf.effective_end_date
+             AND paf.pay_basis_id IN (
+                     SELECT pay_basis_id
+                             FROM per_pay_bases ppb
+                            WHERE NAME IN ('FLUX')
+                              AND ppb.business_group_id = ppf.business_group_id);
+
+      CURSOR csr_get_nw_hrs (
+         p_tim_id       NUMBER,
+         p_start_date   DATE,
+         p_end_date     DATE
+      )
+      IS
+         SELECT   *
+             FROM (SELECT   SUM (hours) hours, hl.lookup_code, hl.meaning,
+                            hshw.ffv_cost_center_id, state_name, county_name,
+                            zip_code, city_name,
+                            hl.attribute1 overtime_element
+                       FROM hxt_sum_hours_worked_f hshw,
+                            pay_element_types_f pet,
+                            fnd_lookup_values hl
+                      WHERE tim_id = p_tim_id
+                        AND hshw.effective_end_date = hr_general.end_of_time
+                        AND pet.element_type_id = hshw.element_type_id
+                        AND hshw.date_worked BETWEEN p_start_date AND p_end_date
+                        AND hl.lookup_type = 'XXARG_NWOT_PROC_ORDER'
+                        AND hl.meaning = pet.element_name
+                   GROUP BY hl.lookup_code,
+                            hl.meaning,
+                            hshw.ffv_cost_center_id,
+                            state_name,
+                            county_name,
+                            zip_code,
+                            city_name,
+                            hl.attribute1) a
+            WHERE hours > 0
+         ORDER BY lookup_code;
+
+      CURSOR csr_get_total_hrs (
+         p_tim_id       NUMBER,
+         p_start_date   DATE,
+         p_end_date     DATE
+      )
+      IS
+         SELECT SUM (hours) total_hours
+           FROM hxt_sum_hours_worked_f
+          WHERE tim_id = p_tim_id
+            AND date_worked BETWEEN p_start_date AND p_end_date;
+
+      l_time_period_id     NUMBER;
+      l_ctrl_rec           csr_get_ctrl_tbl%ROWTYPE;
+      -- Variables for processing week
+      l_week_start_date    DATE;
+      l_week_end_date      DATE;
+      l_total_hours        NUMBER;
+      l_wk_regular_hours   NUMBER;
+      l_excess_40_flag     VARCHAR2 (1);
+      l_non_ot_hours       NUMBER;
+      l_ot_hours           NUMBER;
+      l_earning_code       pay_element_types_f.element_name%TYPE;
+      l_ot_earning_code    pay_element_types_f.element_name%TYPE;
+      l_proc_name          VARCHAR2 (30)              := 'CALCULATE_FLUX_NWOT';
+   BEGIN
+      debug_trace (g_package || l_proc_name || ' 10 ');
+
+      OPEN csr_get_ctrl_tbl;
+
+      FETCH csr_get_ctrl_tbl
+       INTO l_ctrl_rec;
+
+      CLOSE csr_get_ctrl_tbl;
+
+      debug_trace (g_package || l_proc_name || ' 20 ');
+
+      OPEN csr_get_ptp_id (l_ctrl_rec.period_end_date);
+
+      FETCH csr_get_ptp_id
+       INTO l_time_period_id;
+
+      CLOSE csr_get_ptp_id;
+
+      debug_trace (   g_package
+                   || l_proc_name
+                   || ' 30 '
+                   || 'Time Period Id '
+                   || l_time_period_id
+                  );
+
+      FOR i IN 1 .. 2
+         LOOP
+            IF (i = 1)
+            THEN
+               l_week_start_date := l_ctrl_rec.week1_start_date;
+               l_week_end_date := l_ctrl_rec.week1_end_date;
+            ELSIF (l_ctrl_rec.week2_end_date IS NOT NULL)
+            THEN
+               l_week_start_date := l_ctrl_rec.week2_start_date;
+               l_week_end_date := l_ctrl_rec.week2_end_date;
+            END IF;
+
+      FOR tim IN csr_get_flux_tim (l_time_period_id, l_week_end_date)
+      LOOP
+         -- Delete any NWOT calculated previously
+         -- When running the program for week2, week1 should be recalcualted
+         -- as there could be some manual changes to week1 hours in OTL
+         DELETE FROM hxt_det_hours_worked_f
+               WHERE tim_id = tim.ID
+                 AND parent_id IN (
+                        SELECT ID
+                          FROM hxt_sum_hours_worked_f
+                         WHERE tim_id = tim.ID
+                           AND time_building_block_id IS NULL
+                           AND time_building_block_ovn IS NULL
+                           AND date_worked between l_week_start_date and l_week_end_date
+                           AND element_type_id IN (
+                                  SELECT element_type_id
+                                    FROM pay_element_types_f pet
+                                   WHERE business_group_id = 0
+                                     AND SYSDATE BETWEEN effective_start_date
+                                                     AND effective_end_date
+                                     AND element_name IN (
+                                            SELECT meaning
+                                              FROM fnd_lookup_values
+                                             WHERE lookup_type =
+                                                       'XXARG_NWOT_PROC_ORDER'
+                                            UNION
+                                            SELECT attribute1
+                                              FROM fnd_lookup_values
+                                             WHERE lookup_type =
+                                                       'XXARG_NWOT_PROC_ORDER')));
+
+         debug_trace (g_package || l_proc_name || ' 40 ');
+
+         DELETE FROM hxt_sum_hours_worked_f
+               WHERE tim_id = tim.ID
+                 AND time_building_block_id IS NULL
+                 AND time_building_block_ovn IS NULL
+                           AND date_worked between l_week_start_date and l_week_end_date
+                 AND element_type_id IN (
+                        SELECT element_type_id
+                          FROM pay_element_types_f pet
+                         WHERE business_group_id = 0
+                           AND SYSDATE BETWEEN effective_start_date
+                                           AND effective_end_date
+                           AND element_name IN (
+                                  SELECT meaning
+                                    FROM fnd_lookup_values
+                                   WHERE lookup_type = 'XXARG_NWOT_PROC_ORDER'
+                                  UNION
+                                  SELECT attribute1
+                                    FROM fnd_lookup_values
+                                   WHERE lookup_type = 'XXARG_NWOT_PROC_ORDER'));
+
+         debug_trace (g_package || l_proc_name || ' 50 ');
+
+         
+            l_total_hours := 0;
+
+            -- Get total number of hours
+            OPEN csr_get_total_hrs (tim.ID, l_week_start_date,
+                                    l_week_end_date);
+
+            FETCH csr_get_total_hrs
+             INTO l_total_hours;
+
+            CLOSE csr_get_total_hrs;
+
+            debug_trace (   g_package
+                         || l_proc_name
+                         || ' 60 '
+                         || ' Total Hours '
+                         || l_total_hours
+                        );
+
+            -- If total number of hours > 40 then
+            IF (l_total_hours > 40)
+            THEN
+               l_wk_regular_hours := 0;
+               -- Get the total number of regular hours;
+               l_wk_regular_hours :=
+                  xxarg_hr_otl_util_pkg.get_sum_regular_hrs
+                                          (p_tim_id          => tim.ID,
+                                           p_person_id       => tim.for_person_id,
+                                           p_start_date      => l_week_start_date,
+                                           p_end_date        => l_week_end_date
+                                          );
+               debug_trace (g_package || l_proc_name || ' 70 ');
+
+               --NWOT Hours
+               IF (l_wk_regular_hours > 40)
+               THEN
+                  l_wk_regular_hours := 40;
+                  l_excess_40_flag := 'Y';
+               ELSE
+                  l_excess_40_flag := 'N';
+               END IF;
+
+               debug_trace (g_package || l_proc_name || ' 80 ');
+
+               FOR nwot IN csr_get_nw_hrs (tim.ID,
+                                           l_week_start_date,
+                                           l_week_end_date
+                                          )
+               LOOP
+                  DBMS_OUTPUT.put_line ('1... ' || nwot.hours);
+                  debug_trace (   g_package
+                               || l_proc_name
+                               || ' 90 '
+                               || ' NWOT Hours '
+                               || nwot.hours
+                              );
+
+                  IF (l_excess_40_flag != 'Y')
+                  THEN
+                     IF (l_wk_regular_hours + nwot.hours) > 40
+                     THEN
+                        -- Hours excess of 40,
+                        l_excess_40_flag := 'Y';
+                        l_earning_code := nwot.meaning;
+                        l_ot_earning_code := nwot.overtime_element;
+                        l_ot_hours := l_wk_regular_hours + nwot.hours - 40;
+                     ELSE
+                        l_wk_regular_hours := l_wk_regular_hours + nwot.hours;
+                     END IF;
+                  ELSE
+                     l_earning_code := nwot.meaning;
+                     l_ot_earning_code := nwot.overtime_element;
+                     l_non_ot_hours := 0;
+                     l_ot_hours := nwot.hours;
+                  END IF;
+
+                  debug_trace (   g_package
+                               || l_proc_name
+                               || ' 100 '
+                               || 'Overtime '
+                               || l_ot_hours
+                              );
+
+                  IF (l_excess_40_flag = 'Y')
+                  THEN
+                     xxarg_hr_otl_util_pkg.amend_otm_timecard
+                                (p_tim_id              => tim.ID,
+                                 p_for_person_id       => tim.for_person_id,
+                                 p_date_worked         => l_week_end_date,
+                                 p_earn_code1          => l_earning_code,
+                                 p_earn_code2          => l_ot_earning_code,
+                                 p_hours               => l_ot_hours,
+                                 p_cost_center_id      => nwot.ffv_cost_center_id,
+                                 p_city_name           => nwot.city_name,
+                                 p_county_name         => nwot.county_name,
+                                 p_zip_code            => nwot.zip_code,
+                                 p_state_name          => nwot.state_name,
+                                 p_retcode             => p_retcode
+                                );
+                     debug_trace (g_package || l_proc_name || ' 110 ');
+                  END IF;
+               END LOOP;                     
+            END IF;
+         END LOOP; 
+      END LOOP;    
+
+      debug_trace (g_package || l_proc_name || ' 120 ');
+   END calculate_flux_nwot;
+
+/*******************************************************************************
+    Name         :   CALCULATE_CA_MGR_NWOT
+    Scope        :   LOCAL
+    Descirption  :   This procedure calcualates non-worked overtime for California
+                     managers. California managers get daily non-worked overtime
+                     only. Non-worked overtime is amended to the OTLR timecard.
+                     Non-Worked hours are calculated for all the earning codes
+                     listed in the lookup 'XXARG_NWOT_PROC_ORDER' in the same
+                     order.
+
+*******************************************************************************/
+   PROCEDURE calculate_ca_mgr_nwot (p_payroll_id NUMBER, p_retcode IN OUT NUMBER)
+   IS
+      -- Get open payroll period from the control table
+      CURSOR csr_get_ctrl_tbl
+      IS
+         SELECT *
+           FROM xxarg.xxarg_hr_otl_ctrl_tbl
+          WHERE payroll_id = p_payroll_id AND payroll_run = 'N';
+
+      -- Get the time period id
+      CURSOR csr_get_ptp_id (p_period_end_date DATE)
+      IS
+         SELECT ptp.time_period_id
+           FROM per_time_periods ptp
+          WHERE ptp.payroll_id = p_payroll_id
+            AND ptp.end_date = p_period_end_date;
+
+      -- Cursor to get flux employees in the given payroll
+      CURSOR csr_get_flux_tim (p_time_period_id NUMBER,l_day_worked date)
+      IS
+         SELECT DISTINCT tim.ID, tim.for_person_id, tim.time_period_id
+                    FROM hxt_timecards_f tim,
+                         per_all_people_f ppf,
+                         per_all_assignments_f paf,
+                         per_time_periods ptp,
+                         hr_locations hl
+                   WHERE tim.payroll_id = p_payroll_id
+                     AND tim.time_period_id = p_time_period_id
+                     AND tim.for_person_id = ppf.person_id
+                     AND ppf.person_id = paf.person_id
+                     AND ptp.time_period_id = p_time_period_id
+                     AND paf.location_id = hl.location_id
+                     AND l_day_worked BETWEEN ppf.effective_start_date
+                                                AND ppf.effective_end_date
+
+                     AND l_day_worked BETWEEN paf.effective_start_date
+                                                AND paf.effective_end_date
+                     AND paf.job_id IN (
+                            SELECT job_id
+                             FROM per_jobs
+                            WHERE NAME IN
+                                     ('General Manager Arby''s - California',
+                                      'Fast Track Manager - California',
+                                      'Manager - California',
+                                      'Assistant Manager - California',
+                                      'Manager Trainee - California'
+                                     ))
+                     AND hl.region_2 IN ('CA');
+
+
+      CURSOR csr_get_nw_hrs (
+         p_tim_id       NUMBER,
+         p_start_date   DATE,
+         p_end_date     DATE
+      )
+      IS
+         SELECT   *
+             FROM (SELECT   SUM (hours) hours, hl.lookup_code, hl.meaning,
+                            hshw.ffv_cost_center_id, state_name, county_name,
+                            zip_code, city_name,
+                            hl.attribute1 overtime_element
+                       FROM hxt_sum_hours_worked_f hshw,
+                            pay_element_types_f pet,
+                            fnd_lookup_values hl
+                      WHERE tim_id = p_tim_id
+                        AND pet.element_type_id = hshw.element_type_id
+                        AND hshw.date_worked BETWEEN p_start_date AND p_end_date
+                        AND hl.lookup_type = 'XXARG_NWOT_PROC_ORDER'
+                        AND hl.meaning = pet.element_name
+                   GROUP BY hl.lookup_code,
+                            hl.meaning,
+                            hshw.ffv_cost_center_id,
+                            state_name,
+                            county_name,
+                            zip_code,
+                            city_name,
+                            hl.attribute1) a
+            WHERE hours > 0
+         ORDER BY lookup_code;
+
+      CURSOR csr_get_total_hrs (
+         p_tim_id       NUMBER,
+         p_start_date   DATE,
+         p_end_date     DATE
+      )
+      IS
+         SELECT SUM (hours) total_hours
+           FROM hxt_sum_hours_worked_f
+          WHERE tim_id = p_tim_id
+            AND date_worked BETWEEN p_start_date AND p_end_date;
+
+      l_time_period_id      NUMBER;
+      l_ctrl_rec            csr_get_ctrl_tbl%ROWTYPE;
+      -- Variables for processing week
+      l_week_start_date     DATE;
+      l_week_end_date       DATE;
+      l_total_hours         NUMBER;
+      l_day_regular_hours   NUMBER;
+      l_excess_8_flag       VARCHAR2 (1);
+      l_non_ot_hours        NUMBER;
+      l_ot_hours            NUMBER;
+      l_earning_code        pay_element_types_f.element_name%TYPE;
+      l_ot_earning_code     pay_element_types_f.element_name%TYPE;
+      l_proc_name           VARCHAR2 (30)           := 'CALCULATE_CA_MGR_NWOT';
+   BEGIN
+      debug_trace (g_package || l_proc_name || ' 10 ');
+
+      OPEN csr_get_ctrl_tbl;
+
+      FETCH csr_get_ctrl_tbl
+       INTO l_ctrl_rec;
+
+      CLOSE csr_get_ctrl_tbl;
+
+      debug_trace (g_package || l_proc_name || ' 20 ');
+
+      OPEN csr_get_ptp_id (l_ctrl_rec.period_end_date);
+
+      FETCH csr_get_ptp_id
+       INTO l_time_period_id;
+
+      CLOSE csr_get_ptp_id;
+
+      debug_trace (g_package || l_proc_name || ' 30 ');
+
+
+
+         FOR i IN 0 .. (  l_ctrl_rec.period_end_date
+                        - l_ctrl_rec.week1_start_date
+                       )
+         LOOP
+            debug_trace (g_package || l_proc_name || ' 50 ');
+            l_week_start_date := l_ctrl_rec.week1_start_date + i;
+            l_week_end_date := l_ctrl_rec.week1_start_date + i;
+            l_total_hours := 0;
+            
+      FOR tim IN csr_get_flux_tim (l_time_period_id, l_week_start_date)
+      LOOP
+         -- Delete any NWOT calculated previously
+         -- When running the program for week2, week1 should be recalcualted
+         -- as there could be some manual changes to week1 hours in OTL
+         DELETE FROM hxt_sum_hours_worked_f
+               WHERE tim_id = tim.ID
+                 AND time_building_block_id IS NULL
+                 AND time_building_block_ovn IS NULL
+                 AND date_worked = l_week_start_date
+                 AND element_type_id IN (
+                        SELECT element_type_id
+                          FROM pay_element_types_f pet
+                         WHERE business_group_id = 0
+                           AND SYSDATE BETWEEN effective_start_date
+                                           AND effective_end_date
+                           AND element_name IN (
+                                  SELECT meaning
+                                    FROM fnd_lookup_values
+                                   WHERE lookup_type = 'XXARG_NWOT_PROC_ORDER'
+                                  UNION
+                                  SELECT attribute1
+                                    FROM fnd_lookup_values
+                                   WHERE lookup_type = 'XXARG_NWOT_PROC_ORDER'));
+
+         debug_trace (g_package || l_proc_name || ' 40 ');
+
+
+            -- Get total number of hours
+            OPEN csr_get_total_hrs (tim.ID,
+                                    l_week_start_date,
+                                    l_week_end_date
+                                   );
+
+            FETCH csr_get_total_hrs
+             INTO l_total_hours;
+
+            CLOSE csr_get_total_hrs;
+
+            debug_trace (   g_package
+                         || l_proc_name
+                         || ' 50 '
+                         || 'Total Hours '
+                         || l_total_hours
+                        );
+            DBMS_OUTPUT.put_line ('Total Hours ' || l_total_hours);
+
+            -- If total number of hours > 8 then
+            IF (l_total_hours > 8)
+            THEN
+               l_day_regular_hours := 0;
+               -- Get the total number of regular hours;
+               l_day_regular_hours :=
+                  xxarg_hr_otl_util_pkg.get_sum_regular_hrs
+                                          (p_tim_id          => tim.ID,
+                                           p_person_id       => tim.for_person_id,
+                                           p_start_date      => l_week_start_date,
+                                           p_end_date        => l_week_end_date
+                                          );
+               debug_trace (g_package || l_proc_name || ' 60 ');
+
+               --NWOT Hours
+               IF (l_day_regular_hours > 8)
+               THEN
+                  l_day_regular_hours := 8;
+                  l_excess_8_flag := 'Y';
+               ELSE
+                  l_excess_8_flag := 'N';
+               END IF;
+
+               FOR nwot IN csr_get_nw_hrs (tim.ID,
+                                           l_week_start_date,
+                                           l_week_end_date
+                                          )
+               LOOP
+                  debug_trace (g_package || l_proc_name || ' 70 ');
+
+                  IF (l_excess_8_flag != 'Y')
+                  THEN
+                     IF (l_day_regular_hours + nwot.hours) > 8
+                     THEN
+                        -- Hours excess of 8,
+                        l_excess_8_flag := 'Y';
+                        l_earning_code := nwot.meaning;
+                        l_ot_earning_code := nwot.overtime_element;
+                        l_ot_hours := l_day_regular_hours + nwot.hours - 8;
+                     ELSE
+                        l_day_regular_hours :=
+                                             l_day_regular_hours + nwot.hours;
+                     END IF;
+                  ELSE
+                     l_earning_code := nwot.meaning;
+                     l_ot_earning_code := nwot.overtime_element;
+                     l_non_ot_hours := 0;
+                     l_ot_hours := nwot.hours;
+                  END IF;
+
+                  IF (l_excess_8_flag = 'Y')
+                  THEN
+                     debug_trace (   g_package
+                                  || l_proc_name
+                                  || ' 80 '
+                                  || 'OT Hours '
+                                  || l_ot_hours
+                                 );
+                     debug_trace('Reg Ele ' || l_earning_code);
+                     debug_trace('OT Element ' || l_ot_earning_code);
+
+                     xxarg_hr_otl_util_pkg.amend_otm_timecard
+                                 (p_tim_id              => tim.ID,
+                                  p_for_person_id       => tim.for_person_id,
+                                  p_date_worked         => l_week_end_date,
+                                  p_earn_code1          => l_earning_code,
+                                  p_earn_code2          => l_ot_earning_code,
+                                  p_hours               => l_ot_hours,
+                                  p_cost_center_id      => nwot.ffv_cost_center_id,
+                                  p_city_name           => nwot.city_name,
+                                  p_county_name         => nwot.county_name,
+                                  p_zip_code            => nwot.zip_code,
+                                  p_state_name          => nwot.state_name,
+                                  p_retcode             => p_retcode
+                                 );
+                  END IF;
+               END LOOP;                     -- For each non-worked hours type
+            END IF;
+         END LOOP;      -- for all timecards
+      END LOOP;     -- for i in 1..number of days in pay period 
+
+      debug_trace (g_package || l_proc_name || ' 90 ');
+   END calculate_ca_mgr_nwot;
+
+/*******************************************************************************
+    Name         :   CALCULATE_NWOT
+    Scope        :   PUBLIC
+    Descirption  :   This is the main procedure that will be called from the
+                     concurrent program. This procedure in turn calls the
+                     procedures to calculate flux non-worked OT and CA manager
+                     non-worked overtime.
+
+*******************************************************************************/
+   PROCEDURE calculate_nwot (
+      p_errbuff      OUT VARCHAR2,
+      p_retcode      OUT NUMBER,
+      p_payroll_id   NUMBER
+   )
+   IS
+      l_proc_name   VARCHAR2 (30) := 'CALCULATE_NWOT';
+   BEGIN
+      g_debug := hr_utility.debug_enabled;
+      insert into fnd_sessions(session_id,effective_date) values (userenv('sessionid'),sysdate);
+      -- Calculate nwot for flux employees
+      debug_trace (g_package || l_proc_name || ' 10 ');
+      calculate_flux_nwot (p_payroll_id => p_payroll_id, p_retcode => p_retcode);
+      debug_trace (g_package || l_proc_name || ' 20 ');
+      -- Calculate daily NWOT for California managers
+      calculate_ca_mgr_nwot (p_payroll_id => p_payroll_id, p_retcode => p_retcode);
+      debug_trace (g_package || l_proc_name || ' 30 ');
+   END calculate_nwot;
+END xxarg_hr_arbys_nwot_pkg;

@@ -1,0 +1,4176 @@
+CREATE OR REPLACE PACKAGE XXARG_HR_OTL_DATA_EDIT_REP_PKG as
+
+/*******************************************************************************
+*    Header: XXARG_HR_OTL_DATA_EDIT_REP_PKG.pkh 115.0 01-SEP-2009 kvsankar S   *
+*             Copyright (c) 2009, by Wendy's Arby's Group                      *
+*                                                                              *
+*   Package Name     :  XXARG_HR_OTL_DATA_EDIT_REP_PKG                         *
+*   Author           :  Kumaresan Sankaranaraayana, Polaris                    *
+*   Description      :  This package is used for OTL Data Edit report          *
+*                                                                              *
+* HISTORY                                                                      *
+* Changed BY     Change Date   Version  Comments                               *
+* -------------  ------------  -------  ---------------------------------------*
+*  Kumaresan      27-OCT-2009    115.0  Initial Version                        *
+*                                                                              *
+*******************************************************************************/
+
+/*******************************************************************************
+    Name         :   GET_EARN_POLICY
+    Scope        :   GLOBAL
+    Description  :   This function is used to get the earning policy that
+                     needs to be assigned to the assignment
+    Author       :   Kumaresan
+*******************************************************************************/
+FUNCTION GET_EARN_POLICY(pi_bus_grp_id  IN NUMBER
+                        ,pi_asg_id      IN NUMBER
+                        ,pi_wk_end_date IN DATE) RETURN VARCHAR2;
+
+/*******************************************************************************
+    Name         :   GET_REP_XML
+    Scope        :   GLOBAL
+    Description  :   This function is used to generate the XML for OTL Data
+                     Edit report
+    Author       :   Kumaresan
+*******************************************************************************/
+PROCEDURE GET_REP_XML(errbuf           OUT VARCHAR2
+                     ,retcode          OUT VARCHAR2
+                     ,pi_bus_grp_id     IN NUMBER
+                     ,pi_pay_id         IN NUMBER
+                     ,pi_wk_end_date    IN VARCHAR2
+                     ,pi_mode           IN VARCHAR2
+                     ,pi_thr_count      IN NUMBER);
+
+/*******************************************************************************
+    Name         :   GET_REP_XML
+    Scope        :   GLOBAL
+    Description  :   This function is used to generate the XML for OTL Data
+                     Edit report
+    Author       :   Kumaresan
+*******************************************************************************/
+PROCEDURE GET_REP_DATA(errbuf           OUT VARCHAR2
+                      ,retcode          OUT VARCHAR2
+                      ,pi_bus_grp_id     IN NUMBER
+                      ,pi_pay_id         IN NUMBER
+                      ,pi_str_date       IN VARCHAR2
+                      ,pi_end_date       IN VARCHAR2
+                      ,pi_req_id         IN NUMBER
+                      ,pi_mode           IN VARCHAR2
+                      ,pi_thr_num        IN NUMBER);
+
+TYPE varchar2_tab IS TABLE OF varchar2(250) INDEX BY BINARY_INTEGER;
+
+gn_tc_id   number;
+gn_tc_ovn  number;
+
+gn_vac_plan   number;
+gn_sic_plan   number;
+gn_pers_plan  number;
+gn_ar_hr_plan number;
+gn_pay_id     number;
+
+g_err_mess varchar2_tab;
+gv_pay     varchar2(30);
+gv_debug   varchar2(1) := 'Y';
+gv_mode    varchar2(10);
+gc_pack    varchar2(50) := 'XXARG_HR_OTL_DATA_EDIT_REP_PKG';
+
+END XXARG_HR_OTL_DATA_EDIT_REP_PKG;
+
+/
+CREATE OR REPLACE PACKAGE BODY XXARG_HR_OTL_DATA_EDIT_REP_PKG as
+
+/*******************************************************************************
+*    Header: XXARG_HR_OTL_DATA_EDIT_REP_PKG.pkb 115.0 01-SEP-2009 kvsankar S   *
+*             Copyright (c) 2009, by Wendy's Arby's Group                      *
+*                                                                              *
+*   Package Name     :  XXARG_HR_OTL_DATA_EDIT_REP_PKG                         *
+*   Author           :  Kumaresan Sankaranaraayana, Polaris                    *
+*   Description      :  This package is used for OTL Data Edit report          *
+*                                                                              *
+* HISTORY                                                                      *
+* Changed BY     Change Date   Version  Comments                               *
+* -------------  ------------  -------  ---------------------------------------*
+*  Kumaresan      27-OCT-2009    115.   0  Initial Version                        *
+*                                                                              *
+*******************************************************************************/
+
+PROCEDURE INS_ERR(pi_req_id      IN NUMBER
+                 ,pi_org_id      IN NUMBER
+                 ,pi_pers_id     IN NUMBER
+                 ,pi_err_code    IN VARCHAR2
+                 ,pi_err_mesg    IN VARCHAR2) IS
+BEGIN
+   insert into xxarg.xxarg_hr_otl_data_edit_err_tbl
+              (request_id
+              ,organization_id
+              ,person_id
+              ,error_code
+              ,error_message
+              ,last_update_date
+              ,last_updated_by
+              ,creation_date
+              ,created_by)
+       values(pi_req_id
+             ,pi_org_id
+             ,pi_pers_id
+             ,pi_err_code
+             ,pi_err_mesg
+             ,sysdate
+             ,fnd_global.user_id
+             ,sysdate
+             ,fnd_global.user_id);
+END;
+
+PROCEDURE INS_DATA(pi_req_id      IN NUMBER
+                  ,pi_org_id      IN NUMBER
+                  ,pi_pers_id     IN NUMBER
+                  ,pi_asg_id      IN NUMBER
+                  ,pi_ele_type_id IN NUMBER
+                  ,pi_ele_name    IN VARCHAR2
+                  ,pi_date_wkd    IN DATE
+                  ,pi_hours       IN NUMBER
+                  ,pi_cost_center IN VARCHAR2
+                  ,pi_loc_cc      IN VARCHAR2
+                  ,pi_sal_basis   IN VARCHAR2
+                  ,pi_job         IN VARCHAR2
+                  ,pi_rate        IN NUMBER
+                  ,pi_account     IN NUMBER
+                  ,pi_location    IN VARCHAR2
+                  ,pi_job_id      IN NUMBER
+                  ,pi_tb_bl_id    IN NUMBER
+                  ,pi_obj_ver     IN NUMBER) IS
+BEGIN
+
+   xxarg_hr_util_pkg.debug(gv_debug
+                          ,gc_pack || '.INS_DATA'
+                          ,10);
+
+   insert into xxarg.xxarg_hr_otl_data_edit_tbl
+              (request_id
+              ,organization_id
+              ,person_id
+              ,assignment_id
+              ,element_type_id
+              ,element_name
+              ,date_worked
+              ,hours
+              ,cost_center
+              ,loc_cost_center
+              ,salary_basis
+              ,job
+              ,rate
+              ,account
+              ,location
+              ,job_id
+              ,time_building_block_id
+              ,object_version_number
+              ,last_update_date
+              ,last_updated_by
+              ,creation_date
+              ,created_by)
+        values(pi_req_id
+              ,pi_org_id
+              ,pi_pers_id
+              ,pi_asg_id
+              ,pi_ele_type_id
+              ,pi_ele_name
+              ,pi_date_wkd
+              ,pi_hours
+              ,pi_cost_center
+              ,pi_loc_cc
+              ,pi_sal_basis
+              ,pi_job
+              ,pi_rate
+              ,pi_account
+              ,pi_location
+              ,pi_job_id
+              ,pi_tb_bl_id
+              ,pi_obj_ver
+              ,sysdate
+              ,fnd_global.user_id
+              ,sysdate
+              ,fnd_global.user_id);
+
+   xxarg_hr_util_pkg.debug(gv_debug
+                          ,gc_pack || '.INS_DATA'
+                          ,20);
+
+END;
+
+/*******************************************************************************
+    Name         :   GET_EARN_POLICY
+    Scope        :   GLOBAL
+    Description  :   This function is used to get the earning policy that
+                     needs to be assigned to the assignment
+    Author       :   Kumaresan
+*******************************************************************************/
+FUNCTION GET_EARN_POLICY(pi_bus_grp_id  IN NUMBER
+                        ,pi_asg_id      IN NUMBER
+                        ,pi_wk_end_date IN DATE) RETURN VARCHAR2 IS
+
+cursor c_bak_drv_pol is
+select 'Bakery Drivers Earning Policy'
+  from per_all_assignments_f paf
+      ,hr_soft_coding_keyflex hsck
+ where paf.assignment_id = pi_asg_id
+   and paf.soft_coding_keyflex_id = hsck.soft_coding_keyflex_id
+   and hsck.segment1 in (SELECT organization_id
+                           FROM hr_all_organization_units
+                          WHERE NAME = 'The New Bakery Co of Ohio Inc')
+   and paf.job_id in (SELECT job_id
+                        FROM per_jobs
+                       WHERE NAME IN('Casual Driver'
+                                    ,'Driver Full-Time'
+                                    ,'Driver Probationary'))
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date;
+
+cursor c_bak_non_drv_pol is
+select 'WAG Earning Policy'
+  from per_all_assignments_f paf
+      ,hr_soft_coding_keyflex hsck
+ where paf.assignment_id = pi_asg_id
+   and paf.soft_coding_keyflex_id = hsck.soft_coding_keyflex_id
+   and hsck.segment1 in (SELECT organization_id
+                           FROM hr_all_organization_units
+                          WHERE NAME = 'The New Bakery Co of Ohio Inc')
+   and paf.job_id not in (SELECT job_id
+                           FROM per_jobs
+                          WHERE NAME IN('Casual Driver'
+                                       ,'Driver Full-Time'
+                                       ,'Driver Probationary'))
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date;
+
+cursor c_wag_pol is
+select 'WAG Earning Policy'
+  from per_all_assignments_f paf
+ where paf.assignment_id = pi_asg_id
+   and paf.payroll_id NOT IN (SELECT payroll_id
+                                FROM pay_payrolls_f
+                               WHERE payroll_name = 'WENBAK'
+                                 AND trunc(SYSDATE) BETWEEN effective_start_date
+                                                        AND effective_end_date)
+   and paf.pay_basis_id in (SELECT pay_basis_id
+                              FROM per_pay_bases ppb
+                             WHERE name in ('Salaried')
+                               AND ppb.business_group_id = pi_bus_grp_id)
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date;
+
+cursor c_get_cal is
+select 'WA CA Hourly Earning Policy'
+  from per_all_assignments_f paf
+      ,hr_locations_all hl
+ where paf.assignment_id = pi_asg_id
+   and paf.location_id = hl.location_id
+   and paf.payroll_id NOT IN (SELECT payroll_id
+                                FROM pay_payrolls_f
+                               WHERE payroll_name = 'WENBAK'
+                                 AND trunc(SYSDATE) BETWEEN effective_start_date
+                                                        AND effective_end_date)
+   and hl.region_2 in ('CA')
+   and paf.pay_basis_id in (SELECT pay_basis_id
+                              FROM per_pay_bases ppb
+                             WHERE name in ('Hourly - Crew/Team/Shift Mgr'
+                                           ,'Hourly - Shift Sprv'
+                                           ,'Hourly - 53.5'
+                                           ,'Hourly - 55'
+                                           ,'Hourly - Store Mgmt/Office')
+                               AND ppb.business_group_id = pi_bus_grp_id)
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date;
+
+cursor c_get_co_pol is
+select 'Exists'
+      ,ROUND(MONTHS_BETWEEN(SYSDATE, papf.date_of_birth)/12,2) age
+  from per_all_assignments_f paf
+      ,hr_locations_all hl
+      ,per_all_people_f papf
+ where paf.assignment_id = pi_asg_id
+   and paf.location_id = hl.location_id
+   and papf.person_id = paf.person_id
+   and paf.payroll_id NOT IN (SELECT payroll_id
+                                FROM pay_payrolls_f
+                               WHERE payroll_name = 'WENBAK'
+                                 AND trunc(SYSDATE) BETWEEN effective_start_date
+                                                        AND effective_end_date)
+   and hl.region_2 in ('CO')
+   and paf.pay_basis_id in (SELECT pay_basis_id
+                              FROM per_pay_bases ppb
+                             WHERE name in ('Hourly - Crew/Team/Shift Mgr'
+                                           ,'Hourly - Shift Sprv'
+                                           ,'Hourly - 53.5'
+                                           ,'Hourly - 55'
+                                           ,'Hourly - Store Mgmt/Office')
+                               AND ppb.business_group_id = pi_bus_grp_id)
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date
+   and pi_wk_end_date between papf.effective_start_date
+                          and papf.effective_end_date;
+
+cursor c_get_arg_flux_non_trn_pol is
+select 'ARG Flux Earning Policy'
+  from per_all_assignments_f paf
+ where paf.assignment_id = pi_asg_id
+   and paf.payroll_id NOT IN (SELECT payroll_id
+                                FROM pay_payrolls_f
+                               WHERE payroll_name = 'WENBAK'
+                                 AND trunc(SYSDATE) BETWEEN effective_start_date
+                                                        AND effective_end_date)
+   and paf.pay_basis_id in (SELECT pay_basis_id
+                              FROM per_pay_bases ppb
+                             WHERE NAME IN ('FLUX')
+                               AND ppb.business_group_id = pi_bus_grp_id)
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date;
+
+
+/*cursor c_get_arg_flux_trn_pol is
+select 'ARG Training Flux Earning policy'
+  from per_all_assignments_f paf
+ where paf.assignment_id = pi_asg_id
+   and paf.payroll_id NOT IN (SELECT payroll_id
+                                FROM pay_payrolls_f
+                               WHERE payroll_name = 'WENBAK'
+                                 AND trunc(SYSDATE) BETWEEN effective_start_date
+                                                        AND effective_end_date)
+   and paf.job_id in (SELECT dtls.criteria_value
+                        FROM xxarg_hr_pcs pcs, xxarg_hr_pc_dtls dtls
+                       WHERE pcs.process_id = dtls.process_id
+                         AND pi_wk_end_date BETWEEN pcs.effective_start_date
+                                                AND pcs.effective_end_date
+                         AND pi_wk_end_date BETWEEN dtls.effective_start_date
+                                                AND dtls.effective_end_date
+                         AND dtls.criteria_code = 'JOB'
+                         AND pcs.process_name = 'OTL_US_FLUX_TRNG')
+   and paf.pay_basis_id in
+                     (SELECT dtls.criteria_value
+                        FROM xxarg_hr_pcs pcs, xxarg_hr_pc_dtls dtls
+                       WHERE pcs.process_id = dtls.process_id
+                         AND pi_wk_end_date BETWEEN pcs.effective_start_date
+                                                AND pcs.effective_end_date
+                         AND pi_wk_end_date BETWEEN dtls.effective_start_date
+                                                AND dtls.effective_end_date
+                         AND dtls.criteria_code = 'PAY_BASIS'
+                         AND pcs.process_name = 'OTL_US_FLUX_TRNG')
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date; */
+
+cursor c_get_wa_str_reg_pol is
+select 'WA Hourly Regular'
+  from per_all_assignments_f paf
+      ,hr_locations_all hl
+ where paf.assignment_id = pi_asg_id
+   and paf.location_id = hl.location_id
+   and paf.payroll_id NOT IN (SELECT payroll_id
+                                FROM pay_payrolls_f
+                               WHERE payroll_name = 'WENBAK'
+                                 AND trunc(SYSDATE) BETWEEN effective_start_date
+                                                        AND effective_end_date)
+   and hl.region_2 not in ('CA','CO')
+   and paf.pay_basis_id in
+                     (SELECT pay_basis_id
+                        FROM per_pay_bases ppb
+                       WHERE name in ('Hourly - Crew/Team/Shift Mgr'
+                                     ,'Hourly - Shift Sprv'
+                                     ,'Hourly - 53.5'
+                                     ,'Hourly - 55'
+                                     ,'Hourly - Store Mgmt/Office')
+                         AND ppb.business_group_id = pi_bus_grp_id)
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date;
+
+cursor c_get_can_ab_crew_pol is
+select 'Exists'
+      ,(TRUNC(pi_wk_end_date) - ppos.date_start) los_in_days
+  from per_all_assignments_f paf
+      ,hr_locations_all hl
+      ,per_periods_of_service ppos
+ where paf.assignment_id = pi_asg_id
+   and paf.location_id = hl.location_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and hl.region_1 in ('AB')
+   and paf.pay_basis_id in (SELECT pay_basis_id
+                              FROM per_pay_bases ppb
+                             WHERE name in ('Hourly - Crew'
+                                           ,'Hourly - Shift Sprv'
+                                           ,'Hourly - Store Mgmt/Office')
+                               AND ppb.business_group_id = pi_bus_grp_id)
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date;
+
+
+cursor c_get_can_ab_sal_pol is
+select 'WROC AB Salaried'
+  from per_all_assignments_f paf
+      ,hr_locations_all hl
+ where paf.assignment_id = pi_asg_id
+   and paf.location_id = hl.location_id
+   and hl.region_1 in ('AB')
+   and paf.pay_basis_id in (SELECT pay_basis_id
+                              FROM per_pay_bases ppb
+                             WHERE NAME IN ('Salaried')
+                               AND ppb.business_group_id = pi_bus_grp_id)
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date;
+
+cursor c_get_can_bc_crew_pol is
+select 'Exists'
+      ,(TRUNC(pi_wk_end_date) - ppos.date_start) los_in_days
+  from per_all_assignments_f paf
+      ,hr_locations_all hl
+      ,per_periods_of_service ppos
+ where paf.assignment_id = pi_asg_id
+   and paf.location_id = hl.location_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and hl.region_1 in ('BC')
+   and paf.pay_basis_id in (SELECT pay_basis_id
+                              FROM per_pay_bases ppb
+                             WHERE name in ('Hourly - Crew'
+                                           ,'Hourly - Shift Sprv'
+                                           ,'Hourly - Store Mgmt/Office')
+                               AND ppb.business_group_id = pi_bus_grp_id)
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date;
+
+
+cursor c_get_can_bc_sal_pol is
+select 'WROC BC Salaried'
+  from per_all_assignments_f paf
+      ,hr_locations_all hl
+ where paf.assignment_id = pi_asg_id
+   and paf.location_id = hl.location_id
+   and hl.region_1 in ('BC')
+   and paf.pay_basis_id in (SELECT pay_basis_id
+                              FROM per_pay_bases ppb
+                             WHERE NAME IN ('Salaried')
+                               AND ppb.business_group_id = pi_bus_grp_id)
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date;
+
+
+cursor c_get_can_on_crew_pol is
+select 'WROC ON Hourly'
+  from per_all_assignments_f paf
+      ,hr_locations_all hl
+ where paf.assignment_id = pi_asg_id
+   and paf.location_id = hl.location_id
+   and hl.region_1 in ('ON')
+   and paf.pay_basis_id in (SELECT pay_basis_id
+                             FROM per_pay_bases ppb
+                            WHERE name in ('Hourly - Crew'
+                                          ,'Hourly - Shift Sprv'
+                                          ,'Hourly - Store Mgmt/Office')
+                              AND ppb.business_group_id = pi_bus_grp_id)
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date;
+
+cursor c_get_can_on_sal_pol is
+select 'WROC ON Salaried'
+  from per_all_assignments_f paf
+      ,hr_locations_all hl
+ where paf.assignment_id = pi_asg_id
+   and paf.location_id = hl.location_id
+   and hl.region_1 in ('ON')
+   and paf.pay_basis_id in (SELECT pay_basis_id
+                              FROM per_pay_bases ppb
+                             WHERE NAME IN ('Salaried')
+                               AND ppb.business_group_id = pi_bus_grp_id)
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date;
+
+cursor c_get_can_qc_crew_pol is
+select 'WROC QC Hourly'
+  from per_all_assignments_f paf
+      ,hr_locations_all hl
+ where paf.assignment_id = pi_asg_id
+   and paf.location_id = hl.location_id
+   and hl.region_1 in ('QC')
+   and paf.pay_basis_id in (SELECT pay_basis_id
+                             FROM per_pay_bases ppb
+                            WHERE name in ('Hourly - Crew'
+                                          ,'Hourly - Shift Sprv'
+                                          ,'Hourly - Store Mgmt/Office')
+                              AND ppb.business_group_id = pi_bus_grp_id)
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date;
+
+
+cursor c_get_can_qc_sal_pol is
+select 'WROC QC Salaried'
+  from per_all_assignments_f paf
+      ,hr_locations_all hl
+ where paf.assignment_id = pi_asg_id
+   and paf.location_id = hl.location_id
+   and hl.region_1 in ('QC')
+   and paf.pay_basis_id in (SELECT pay_basis_id
+                              FROM per_pay_bases ppb
+                             WHERE NAME IN ('Salaried')
+                               AND ppb.business_group_id = pi_bus_grp_id)
+   and pi_wk_end_date between paf.effective_start_date
+                          and paf.effective_end_date;
+
+
+   lv_pol_name varchar2(100);
+   lv_exists   varchar2(10);
+
+   ln_age      number;
+   ln_los_days number;
+
+BEGIN
+   lv_pol_name := null;
+
+   if pi_bus_grp_id = 0 then
+      -- Bakery Driver Policy
+      open c_bak_drv_pol;
+      fetch c_bak_drv_pol into lv_pol_name;
+      close c_bak_drv_pol;
+
+      if lv_pol_name is null then
+         open c_bak_non_drv_pol;
+         fetch c_bak_non_drv_pol into lv_pol_name;
+         close c_bak_non_drv_pol;
+      end if;
+
+      if lv_pol_name is null then
+         open c_wag_pol;
+         fetch c_wag_pol into lv_pol_name;
+         close c_wag_pol;
+      end if;
+
+      if lv_pol_name is null then
+         open c_get_cal;
+         fetch c_get_cal into lv_pol_name;
+         close c_get_cal;
+      end if;
+
+      if lv_pol_name is null then
+         open c_get_co_pol;
+         fetch c_get_co_pol into lv_exists
+                                ,ln_age;
+
+         if c_get_co_pol%found then
+            if ln_age >= 18 then
+               lv_pol_name := 'WA CO Hourly Over 18';
+            else
+               lv_pol_name := 'WA CO Hourly Less than 18';
+            end if;
+         end if;
+         close c_get_co_pol;
+
+      end if;
+
+      if lv_pol_name is null then
+         open c_get_arg_flux_non_trn_pol;
+         fetch c_get_arg_flux_non_trn_pol into lv_pol_name;
+         close c_get_arg_flux_non_trn_pol;
+      end if;
+
+      /*
+      if lv_pol_name is null then
+         open c_get_arg_flux_trn_pol;
+         fetch c_get_arg_flux_trn_pol into lv_pol_name;
+         close c_get_arg_flux_trn_pol;
+      end if;
+      */
+
+      if lv_pol_name is null then
+         open c_get_wa_str_reg_pol;
+         fetch c_get_wa_str_reg_pol into lv_pol_name;
+         close c_get_wa_str_reg_pol;
+      end if;
+   else
+      -- Canada policy
+      open c_get_can_ab_crew_pol;
+      fetch c_get_can_ab_crew_pol into lv_exists
+                                      ,ln_los_days;
+      if c_get_can_ab_crew_pol%found then
+         if ln_los_days >= 30 then
+            lv_pol_name := 'WROC AB Hourly';
+         else
+            lv_pol_name := 'WROC AB Hourly Hol Not Eligible';
+         end if;
+      end if;
+      close c_get_can_ab_crew_pol;
+
+      if lv_pol_name is null then
+         open c_get_can_ab_sal_pol;
+         fetch c_get_can_ab_sal_pol into lv_pol_name;
+         close c_get_can_ab_sal_pol;
+      end if;
+
+      if lv_pol_name is null then
+         open c_get_can_bc_crew_pol;
+         fetch c_get_can_bc_crew_pol into lv_exists
+                                         ,ln_los_days;
+
+         if c_get_can_bc_crew_pol%found then
+            if ln_los_days >= 30 then
+               lv_pol_name := 'WROC BC Hourly';
+            else
+               lv_pol_name := 'WROC BC Hourly Hol Not Eligible';
+            end if;
+         end if;
+         close c_get_can_bc_crew_pol;
+      end if;
+
+      if lv_pol_name is null then
+         open c_get_can_bc_sal_pol;
+         fetch c_get_can_bc_sal_pol into lv_pol_name;
+         close c_get_can_bc_sal_pol;
+      end if;
+
+      if lv_pol_name is null then
+         open c_get_can_on_crew_pol;
+         fetch c_get_can_on_crew_pol into lv_pol_name;
+         close c_get_can_on_crew_pol;
+      end if;
+
+      if lv_pol_name is null then
+         open c_get_can_on_sal_pol;
+         fetch c_get_can_on_sal_pol into lv_pol_name;
+         close c_get_can_on_sal_pol;
+      end if;
+
+      if lv_pol_name is null then
+         open c_get_can_qc_crew_pol;
+         fetch c_get_can_qc_crew_pol into lv_pol_name;
+         close c_get_can_qc_crew_pol;
+      end if;
+
+   end if;
+
+   return lv_pol_name;
+END GET_EARN_POLICY;
+
+
+
+/*******************************************************************************
+    Name         :   GET_US_EDITS
+    Scope        :   GLOBAL
+    Description  :   This function is used to get US specific edits
+    Author       :   Kumaresan
+*******************************************************************************/
+PROCEDURE GET_CA_EDITS(pi_bus_grp_id  IN NUMBER
+                      ,pi_req_id      IN NUMBER
+                      ,pi_org_id      IN NUMBER
+                      ,pi_wk_str_date IN DATE
+                      ,pi_wk_end_date IN DATE) IS
+
+-- No Holiday in holiday week
+cursor c_get_no_hol_in_hol is
+select xxmt.person_id person_id
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+      ,per_pay_bases ppb
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and xxmt.assignment_id = paf.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and paf.pay_basis_id = ppb.pay_basis_id
+   and ppb.name in ('Hourly - Store','Hourly - Non-Store')
+   and exists (select 'Exists'
+                 from hxt_add_assign_info_f haai
+                     ,hxt_earning_policies hep
+                     ,hxt_holiday_calendars hhc
+                     ,hxt_holiday_days hhd
+                where haai.assignment_id = xxmt.assignment_id
+                  and hep.id = haai.earning_policy
+                  and hhc.id = hep.hcl_id
+                  and pi_wk_end_date between hep.effective_start_date
+                                         and hep.effective_end_date
+                  and pi_wk_end_date between haai.effective_start_date
+                                         and haai.effective_end_date
+                  and hhd.hcl_id = hhc.id
+                  and hhd.holiday_date between pi_wk_str_date
+                                           and pi_wk_end_date)
+   and not exists (select 'Exists'
+                     from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                    where xxde.request_id = pi_req_id
+                      and xxde.organization_id = pi_org_id
+                      and xxde.assignment_id = paf.assignment_id
+                      and xxde.element_name in ('HOL','HLB'))
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+
+-- No Holiday in holiday week
+cursor c_get_hol_in_no_hol is
+select xxmt.person_id person_id
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+      ,per_pay_bases ppb
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and xxmt.assignment_id = paf.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and paf.pay_basis_id = ppb.pay_basis_id
+   and ppb.name in ('Hourly - Store','Hourly - Non-Store')
+   and not exists (select 'Exists'
+                     from hxt_add_assign_info_f haai
+                         ,hxt_earning_policies hep
+                         ,hxt_holiday_calendars hhc
+                         ,hxt_holiday_days hhd
+                   where haai.assignment_id = xxmt.assignment_id
+                     and hep.id = haai.earning_policy
+                     and hhc.id = hep.hcl_id
+                     and pi_wk_end_date between hep.effective_start_date
+                                            and hep.effective_end_date
+                     and pi_wk_end_date between haai.effective_start_date
+                                            and haai.effective_end_date
+                     and hhd.hcl_id = hhc.id
+                     and hhd.holiday_date between pi_wk_str_date
+                                              and pi_wk_end_date)
+   and exists (select 'Exists'
+                 from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                where xxde.request_id = pi_req_id
+                  and xxde.organization_id = pi_org_id
+                  and xxde.assignment_id = paf.assignment_id
+                  and xxde.element_name in ('HOL','HLB'))
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+-- Employees worked in multiple province
+cursor c_get_mult_prov is
+with xx_mult_prov as
+(
+select person_id
+      ,hl.region_1
+  from xxarg.xxarg_hr_otl_data_edit_tbl xx
+      ,hr_organization_units hro
+      ,pay_cost_allocation_keyflex pcak
+      ,hr_locations_all hl
+ where xx.request_id = pi_req_id
+   and xx.organization_id = pi_org_id
+   and xx.cost_center = pcak.segment2
+   and hro.cost_allocation_keyflex_id = pcak.cost_allocation_keyflex_id
+   and hro.location_id = hl.location_id
+union
+select person_id
+      ,hl.region_1
+  from xxarg.xxarg_hr_otl_data_edit_tbl xx
+      ,hr_organization_units hro
+      ,pay_cost_allocation_keyflex pcak
+      ,hr_locations_all hl
+ where xx.request_id = pi_req_id
+   and xx.organization_id = pi_org_id
+   and xx.organization_id = hro.organization_id
+   and xx.cost_center is null
+   and hro.cost_allocation_keyflex_id = pcak.cost_allocation_keyflex_id
+   and hro.location_id = hl.location_id
+)
+select person_id
+  from xx_mult_prov
+ group by person_id
+   having count(*) > 1;
+
+-- Detail record for employees worked in multiple province
+cursor c_get_mult_prov_det(cp_pers_id number) is
+select hl.region_1
+  from xxarg.xxarg_hr_otl_data_edit_tbl xx
+      ,hr_organization_units hro
+      ,pay_cost_allocation_keyflex pcak
+      ,hr_locations_all hl
+ where xx.request_id = pi_req_id
+   and xx.organization_id = pi_org_id
+   and xx.person_id = cp_pers_id
+   and xx.cost_center = pcak.segment2
+   and hro.cost_allocation_keyflex_id = pcak.cost_allocation_keyflex_id
+   and hro.location_id = hl.location_id
+union
+select hl.region_1
+  from xxarg.xxarg_hr_otl_data_edit_tbl xx
+      ,hr_organization_units hro
+      ,pay_cost_allocation_keyflex pcak
+      ,hr_locations_all hl
+ where xx.request_id = pi_req_id
+   and xx.organization_id = pi_org_id
+   and xx.person_id = cp_pers_id
+   and xx.organization_id = hro.organization_id
+   and xx.cost_center is null
+   and hro.cost_allocation_keyflex_id = pcak.cost_allocation_keyflex_id
+   and hro.location_id = hl.location_id;
+
+
+-- LAN earning code in non BC province
+cursor c_lan_in_non_bc is
+select xxmt.person_id person_id
+      ,hl.region_1 province
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+      ,hr_locations_all hl
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and xxmt.assignment_id = paf.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and paf.location_id = hl.location_id
+   and hl.region_1 <> 'BC'
+   and exists (select 'Exists'
+                 from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                where xxde.request_id = pi_req_id
+                  and xxde.organization_id = pi_org_id
+                  and xxde.assignment_id = paf.assignment_id
+                  and xxde.element_name in ('LAN'))
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+
+   ln_pers_id number;
+
+   lv_prov     varchar2(250);
+   lv_ind_prov varchar2(10);
+
+BEGIN
+   -- No Holiday in holiday
+   open c_get_no_hol_in_hol;
+   loop
+      fetch c_get_no_hol_in_hol into ln_pers_id;
+      exit when c_get_no_hol_in_hol%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' No HOL in week');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'NO_HOL_IN_WEEK'
+             ,'No HOL in week');
+   end loop;
+   close c_get_no_hol_in_hol;
+
+   -- Holiday in No-holiday week
+   open c_get_hol_in_no_hol;
+   loop
+      fetch c_get_hol_in_no_hol into ln_pers_id;
+      exit when c_get_hol_in_no_hol%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Holiday pay on a non holiday');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'HOL_IN_NO_HOL_WEEK'
+             ,'Holiday pay on a non holiday');
+   end loop;
+   close c_get_hol_in_no_hol;
+
+   open c_get_mult_prov;
+   loop
+      fetch c_get_mult_prov into ln_pers_id;
+      exit when c_get_mult_prov%notfound;
+
+      lv_prov     := null;
+      lv_ind_prov := null;
+      -- Get Cost Center
+      open c_get_mult_prov_det(ln_pers_id);
+      loop
+         fetch c_get_mult_prov_det into lv_ind_prov;
+         exit when c_get_mult_prov_det%notfound;
+
+         if lv_prov is null then
+            lv_prov := '(' || lv_ind_prov;
+         else
+            lv_prov := lv_prov || ', ' || lv_ind_prov;
+         end if;
+      end loop;
+      close c_get_mult_prov_det;
+
+      lv_prov := lv_prov || ')';
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Employee worked at multiple provinces');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'MULT_CC'
+             ,'Employee worked in multiple provinces'
+              || lv_prov);
+
+   end loop;
+   close c_get_mult_prov;
+
+   -- Get employee in Non-BC province having LAN earning code
+   open c_lan_in_non_bc;
+   loop
+      fetch c_lan_in_non_bc into ln_pers_id
+                                ,lv_prov;
+      exit when c_lan_in_non_bc%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' LAN in non BC. Employees work province is '
+                                      || lv_prov);
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'LAN_IN_NON_BC'
+             ,'LAN in non BC. Employee''s work province is ' || lv_prov
+              || lv_prov);
+
+   end loop;
+   close c_lan_in_non_bc;
+
+
+END GET_CA_EDITS;
+
+/*******************************************************************************
+    Name         :   GET_US_EDITS
+    Scope        :   GLOBAL
+    Description  :   This function is used to get US specific edits
+    Author       :   Kumaresan
+*******************************************************************************/
+PROCEDURE GET_US_EDITS(pi_bus_grp_id  IN NUMBER
+                      ,pi_req_id      IN NUMBER
+                      ,pi_org_id      IN NUMBER
+                      ,pi_wk_str_date IN DATE
+                      ,pi_wk_end_date IN DATE) IS
+
+-- No Holiday in holiday week
+cursor c_get_no_hol_in_hol is
+select xxmt.person_id person_id
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+      ,per_pay_bases ppb
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and xxmt.assignment_id = paf.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and paf.pay_basis_id = ppb.pay_basis_id
+   and ppb.name in ('Salaried','FLUX')
+   and exists (select 'Exists'
+                 from hxt_add_assign_info_f haai
+                     ,hxt_earning_policies hep
+                     ,hxt_holiday_calendars hhc
+                     ,hxt_holiday_days hhd
+                where haai.assignment_id = xxmt.assignment_id
+                  and hep.id = haai.earning_policy
+                  and hhc.id = hep.hcl_id
+                  and pi_wk_end_date between hep.effective_start_date
+                                         and hep.effective_end_date
+                  and pi_wk_end_date between haai.effective_start_date
+                                         and haai.effective_end_date
+                  and hhd.hcl_id = hhc.id
+                  and hhd.holiday_date between pi_wk_str_date
+                                           and pi_wk_end_date)
+   and not exists (select 'Exists'
+                     from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                    where xxde.request_id = pi_req_id
+                      and xxde.organization_id = pi_org_id
+                      and xxde.assignment_id = paf.assignment_id
+                      and xxde.element_name in ('HOL','HLB'))
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+
+-- Holiday in non-holiday week
+cursor c_get_hol_in_no_hol is
+select xxmt.person_id person_id
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and xxmt.assignment_id = paf.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and not exists (select 'Exists'
+                     from hxt_add_assign_info_f haai
+                         ,hxt_earning_policies hep
+                         ,hxt_holiday_calendars hhc
+                         ,hxt_holiday_days hhd
+                    where haai.assignment_id = xxmt.assignment_id
+                      and hep.id = haai.earning_policy
+                      and hhc.id = hep.hcl_id
+                      and pi_wk_end_date between hep.effective_start_date
+                                             and hep.effective_end_date
+                      and pi_wk_end_date between haai.effective_start_date
+                                             and haai.effective_end_date
+                      and hhd.hcl_id = hhc.id
+                      and hhd.holiday_date between pi_wk_str_date
+                                               and pi_wk_end_date)
+   and exists (select 'Exists'
+                 from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                where xxde.request_id = pi_req_id
+                  and xxde.organization_id = pi_org_id
+                  and xxde.assignment_id = paf.assignment_id
+                  and xxde.element_name in ('HOL','HLB'))
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+
+   ln_pers_id number;
+BEGIN
+   -- No Holiday in holiday week
+   open c_get_no_hol_in_hol;
+   loop
+      fetch c_get_no_hol_in_hol into ln_pers_id;
+      exit when c_get_no_hol_in_hol%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' No HOL in week');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'NO_HOL_IN_WEEK'
+             ,'No HOL in week');
+   end loop;
+   close c_get_no_hol_in_hol;
+
+   -- Holiday in No-holiday week
+   open c_get_hol_in_no_hol;
+   loop
+      fetch c_get_hol_in_no_hol into ln_pers_id;
+      exit when c_get_hol_in_no_hol%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Holiday pay on a non holiday');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'HOL_IN_NO_HOL_WEEK'
+             ,'Holiday pay on a non holiday');
+   end loop;
+   close c_get_hol_in_no_hol;
+
+END GET_US_EDITS;
+
+/*******************************************************************************
+    Name         :   GET_GEN_EDITS
+    Scope        :   GLOBAL
+    Description  :   This function is used to get general edits for
+                     organizations
+    Author       :   Kumaresan
+*******************************************************************************/
+PROCEDURE GET_GEN_EDITS(pi_bus_grp_id  IN NUMBER
+                       ,pi_req_id      IN NUMBER
+                       ,pi_org_id      IN NUMBER
+                       ,pi_wk_str_date IN DATE
+                       ,pi_wk_end_date IN DATE) IS
+
+cursor c_get_plan_id is
+select accrual_plan_id
+      ,accrual_plan_name
+  from pay_accrual_plans
+ where business_group_id = pi_bus_grp_id;
+
+-- Check for Vacation Accrual
+cursor c_get_vac is
+select xxde.assignment_id
+      ,max(xxde.person_id) person_id
+      ,max(petf.element_name) element_name
+      ,sum(hours) hours
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+      ,pay_element_entries_f peef
+      ,pay_element_types_f petf
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and peef.assignment_id = xxde.assignment_id
+   and petf.business_group_id = pi_bus_grp_id
+   and peef.element_type_id = petf.element_type_id
+   and xxde.element_name in ('VAC','VACOT')
+   and pi_wk_end_date between petf.effective_start_date
+                          and petf.effective_end_date
+   and pi_wk_end_date between peef.effective_start_date
+                          and peef.effective_end_date
+   and petf.element_name in ('WAG Vac Plan'
+                            ,'Arbys Hourly Vac Plan')
+ group by xxde.assignment_id;
+
+-- Check for Sick Accrual
+cursor c_get_sic is
+select xxde.assignment_id
+      ,max(xxde.person_id) person_id
+      ,max(petf.element_name) element_name
+      ,sum(hours) hours
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+      ,pay_element_entries_f peef
+      ,pay_element_types_f petf
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and peef.assignment_id = xxde.assignment_id
+   and petf.business_group_id = pi_bus_grp_id
+   and peef.element_type_id = petf.element_type_id
+   and xxde.element_name in ('SIC','SICOT')
+   and pi_wk_end_date between petf.effective_start_date
+                          and petf.effective_end_date
+   and pi_wk_end_date between peef.effective_start_date
+                          and peef.effective_end_date
+   and petf.element_name = 'WAG Sick Plan'
+ group by xxde.assignment_id;
+
+-- Check for Sick Accrual
+cursor c_get_pers is
+select xxde.assignment_id
+      ,max(xxde.person_id) person_id
+      ,max(petf.element_name) element_name
+      ,sum(hours) hours
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+      ,pay_element_entries_f peef
+      ,pay_element_types_f petf
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and peef.assignment_id = xxde.assignment_id
+   and petf.business_group_id = pi_bus_grp_id
+   and peef.element_type_id = petf.element_type_id
+   and xxde.element_name in ('PRS','PRSOT')
+   and pi_wk_end_date between petf.effective_start_date
+                          and petf.effective_end_date
+   and pi_wk_end_date between peef.effective_start_date
+                          and peef.effective_end_date
+   and petf.element_name = 'WAG Pers Plan'
+ group by xxde.assignment_id;
+
+-- Pay after termination date
+cursor c_get_pay_after_term_date is
+select xxmt.person_id person_id
+      ,ppos.actual_termination_date
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and xxmt.assignment_id = paf.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and ppos.actual_termination_date is not null
+   and ppos.actual_termination_date between pi_wk_str_date
+                                        and pi_wk_end_date
+   and ppos.actual_termination_date between paf.effective_start_date
+                                        and paf.effective_end_date
+   and exists (select 'Exists'
+                 from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                where xxde.request_id = pi_req_id
+                  and xxde.organization_id = pi_org_id
+                  and xxde.assignment_id = paf.assignment_id
+                  and xxde.date_worked > ppos.actual_termination_date);
+
+-- Override rate < 7.25 or > 50
+cursor c_get_rate_ovrride_limit is
+select xxmt.person_id person_id
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and exists (select 'Exists'
+                 from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                where xxde.request_id = pi_req_id
+                  and xxde.organization_id = pi_org_id
+                  and xxde.assignment_id = xxmt.assignment_id
+                  and xxde.rate is not null
+                  and (xxde.rate < 7.25 or
+                       xxde.rate > 50));
+
+-- Cost center different
+cursor c_get_cc_diff is
+select xxmt.person_id person_id
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and exists (select 'Exists'
+                 from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                where xxde.request_id = pi_req_id
+                  and xxde.organization_id = pi_org_id
+                  and xxde.assignment_id = xxmt.assignment_id
+                  and xxde.cost_center <> xxde.loc_cost_center);
+
+-- Hours Worked > 90
+cursor c_get_hours_90 is
+select xxde.person_id
+      ,sum(hours) hours
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and paf.assignment_id = xxde.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and xxde.element_name in ('REG','OT','DT','TRN','PBK')
+   and paf.job_id not in (SELECT job_id
+                            FROM per_jobs
+                           WHERE NAME IN('Casual Driver'
+                                        ,'Driver Full-Time'
+                                        ,'Driver Probationary'))
+/*   and paf.job_id not in (select dtls.criteria_value
+                           from xxarg_hr_pcs pcs
+                               ,xxarg_hr_pc_dtls dtls
+                          where pcs.process_id = dtls.process_id
+                            and trunc(sysdate) between pcs.effective_start_date
+                                                   and pcs.effective_end_date
+                            and trunc(sysdate) between dtls.effective_start_date
+                                                   and dtls.effective_end_date
+                            and dtls.criteria_code = 'JOB'
+                            and pcs.process_name = 'OTL_US_BAK_DRV')*/
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date))
+ group by xxde.person_id
+ having sum(hours) > 90;
+
+cursor c_loa_with_hours is
+select xxmt.person_id person_id
+      ,past.user_status
+      ,paf.effective_start_date
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+      ,per_all_assignments_f paf
+      ,per_assignment_status_types past
+      ,per_periods_of_service ppos
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and paf.assignment_id = xxmt.assignment_id
+   and paf.assignment_status_type_id = past.assignment_status_type_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and exists (select 'Exists'
+                 from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                where xxde.request_id = pi_req_id
+                  and xxde.organization_id = pi_org_id
+                  and xxde.assignment_id = xxmt.assignment_id
+                  and hours > 0)
+     and paf.assignment_status_type_id in
+                     (select assignment_status_type_id
+                        from per_assignment_status_types
+                       where user_status in (
+                                'Adoption Leave'
+                               ,'California Family Rights Act Leave'
+                               ,'California Pregnancy Disability Leave'
+                               ,'Military LOA'
+                               ,'Personal Leave'
+                               ,'FMLA/Medical Leave Pending'
+                               ,'FMLA Medical'
+                               ,'FMLA - Non Medical'
+                               ,'Non FMLA - Medical'
+                               ,'STD - Pending'
+                               ,'STD - Paid'
+                               ,'LTD - Pending'
+                               ,'LTD - Paid'
+                               ,'Involuntary Suspension'
+                               ,'Severance (LOA)'
+                               ,'WCB Flux'
+                               ,'WCB Unpaid'
+                               ,'WCB Ohio'
+                               ,'Unpaid Disb (Mod-Not Wrk Rel)'
+                               ,'Parental LOA'
+                               ,'Compassionate Care Leave'
+                               ,'Temporary Store Closure'
+                               ,'Maternity - Extended Leave'
+                               ,'STD Modified'
+                               ,'LTD Modified'))
+/*   and paf.assignment_status_type_id in
+                     (select dtls.criteria_value
+                        from xxarg_hr_pcs pcs
+                            ,xxarg_hr_pc_dtls dtls
+                       where pcs.process_id = dtls.process_id
+                         and trunc(sysdate) between pcs.effective_start_date
+                                                and pcs.effective_end_date
+                         and trunc(sysdate) between dtls.effective_start_date
+                                                and dtls.effective_end_date
+                         and dtls.criteria_code = 'ASSIGNMENT_STATUS_TYPE'
+                         and pcs.process_name = 'OTL_DE_LOA_STATUS')*/
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+-- Overtime greater than 30% of total hours
+cursor c_ot_grt_30 is
+with xxbak_runs as(
+select xxde.person_id
+      ,max(xxde.assignment_id) assignment_id
+      ,sum(decode(element_name
+                  ,'OT',hours
+                  ,'DT',hours
+                  ,0)) ovt
+      ,sum(decode(element_name
+                  ,'REG',hours
+                  ,'PBK',hours
+                  ,'TRN',hours
+                  ,0)) reg
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+ group by person_id)
+select xxmt.person_id
+      ,xxmt.reg
+      ,xxmt.ovt
+  from xxbak_runs xxmt
+      ,apps.per_all_assignments_f paf
+      ,apps.per_periods_of_service ppos
+ where paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and xxmt.ovt > (0.30 * (xxmt.ovt + xxmt.reg))
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+
+-- Over standard hours
+cursor c_over_std_hours is
+with xxbak_runs as(
+select xxde.person_id
+      ,max(xxde.assignment_id) assignment_id
+      ,sum(hours) hours
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and xxde.element_name in ('OT','DT','REG','PBK','TRN','VAC','VACOT', 'SIC'
+                            ,'SICOT','PRS', 'PRSOT', 'HOL','BRV','BRVOT')
+ group by person_id)
+select xxmt.person_id
+      ,xxmt.hours otl_hours
+      ,paf.normal_hours asg_hours
+  from xxbak_runs xxmt
+      ,apps.per_all_assignments_f paf
+      ,apps.per_periods_of_service ppos
+      ,per_pay_bases ppb
+ where paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and xxmt.hours > paf.normal_hours
+   and paf.pay_basis_id = ppb.pay_basis_id
+   and ppb.name in ('Salaried','FLUX')
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+-- Under standard hours
+cursor c_under_std_hours is
+with xxbak_runs as(
+select xxde.person_id
+      ,max(xxde.assignment_id) assignment_id
+      ,sum(hours) hours
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and xxde.element_name in ('OT','DT','REG','PBK','TRN','VAC','VACOT', 'SIC'
+                            ,'SICOT','PRS', 'PRSOT', 'HOL','BRV','BRVOT')
+ group by person_id)
+select xxmt.person_id
+      ,xxmt.hours otl_hours
+      ,paf.normal_hours asg_hours
+  from xxbak_runs xxmt
+      ,apps.per_all_assignments_f paf
+      ,apps.per_periods_of_service ppos
+      ,per_pay_bases ppb
+ where paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and xxmt.hours < paf.normal_hours
+   and paf.pay_basis_id = ppb.pay_basis_id
+   and ppb.name in ('Salaried','FLUX')
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+-- Mismatch in policy
+cursor c_mismatch_policy is
+with xxmt_otl as(
+select xxde.person_id
+      ,xxde.assignment_id
+      ,xxarg_hr_otl_data_edit_rep_pkg.get_earn_policy
+           (0
+           ,xxde.assignment_id
+           ,pi_wk_end_date) earn_policy
+  from xxarg.xxarg_hr_multi_thread_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id)
+select xxmt.person_id
+      ,xxmt.earn_policy act_earn_pol
+      ,hep.name cur_earn_pol
+  from xxmt_otl xxmt
+      ,hxt_add_assign_info_f haa
+      ,hxt_earning_policies hep
+ where haa.assignment_id = xxmt.assignment_id
+   and haa.earning_policy = hep.id
+   and hep.name <> xxmt.earn_policy
+   and pi_wk_end_date between nvl (haa.effective_start_date
+                                  ,hr_general.start_of_time)
+                          and nvl (haa.effective_end_date
+                                  ,hr_general.end_of_time);
+                                  
+-- Job code 110 and vacation hours < 30
+cursor c_vac_ne_30 is
+with xxbak_runs as(
+select xxde.person_id
+      ,max(xxde.assignment_id) assignment_id
+      ,sum(hours) hours
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and xxde.element_name in ('VAC')
+ group by person_id)
+select xxmt.person_id
+      ,xxmt.hours otl_hours
+  from xxbak_runs xxmt
+      ,apps.per_all_assignments_f paf
+      ,per_periods_of_service ppos
+      ,apps.per_jobs pj
+ where paf.assignment_id = xxmt.assignment_id
+   and xxmt.hours < 30
+   and paf.job_id = pj.job_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and pj.attribute1 = '110'
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+cursor c_negative_hours is
+with xxbak_runs as(
+select xxde.person_id
+      ,max(xxde.assignment_id) assignment_id
+      ,sum(hours) hours
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and xxde.element_name in ('OT','DT','REG','PBK','TRN','VAC','VACOT', 'SIC'
+                            ,'SICOT','PRS', 'PRSOT', 'HOL','BRV','BRVOT')
+ group by person_id)
+select xxmt.person_id
+      ,xxmt.hours otl_hours
+  from xxbak_runs xxmt
+      ,apps.per_all_assignments_f paf
+      ,apps.per_periods_of_service ppos
+ where paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and xxmt.hours < 0
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+   ln_accr          number;
+   ln_pers_id       number;
+   ln_hours         number;
+   ln_norm_hours    number;
+   ln_ovt           number;
+   ln_reg           number;
+
+   ld_term_date     date;
+   ld_eff_date      date;
+
+   lv_user_status   varchar2(100);
+   lv_act_pol       varchar2(100);
+   lv_cur_pol       varchar2(100);
+
+
+   lc_get_plan_id   c_get_plan_id%ROWTYPE;
+   lc_get_vac       c_get_vac%ROWTYPE;
+   lc_get_sic       c_get_sic%ROWTYPE;
+   lc_get_pers      c_get_pers%ROWTYPE;
+
+BEGIN
+
+   xxarg_hr_util_pkg.debug(gv_debug
+                          ,gc_pack || '.GET_GEN_EDITS'
+                          ,10);
+
+   xxarg_hr_util_pkg.debug_message(gv_debug
+                                  ,'Org ID = ' || pi_org_id);
+
+   -- Get Accrual Plan ID's
+   if gn_vac_plan is null then
+      open c_get_plan_id;
+      loop
+         fetch c_get_plan_id into lc_get_plan_id;
+         exit when c_get_plan_id%notfound;
+
+         if lc_get_plan_id.accrual_plan_name = 'WAG Vac Plan' then
+            gn_vac_plan := lc_get_plan_id.accrual_plan_id;
+         elsif lc_get_plan_id.accrual_plan_name = 'WAG Sick Plan' then
+            gn_sic_plan := lc_get_plan_id.accrual_plan_id;
+         elsif lc_get_plan_id.accrual_plan_name = 'WAG Pers Plan' then
+            gn_pers_plan := lc_get_plan_id.accrual_plan_id;
+         elsif lc_get_plan_id.accrual_plan_name = 'Arbys Hourly Vac Plan' then
+            gn_ar_hr_plan := lc_get_plan_id.accrual_plan_id;
+         end if;
+      end loop;
+      close c_get_plan_id;
+   end if;
+
+   open c_get_vac;
+   loop
+      fetch c_get_vac into lc_get_vac;
+      exit when c_get_vac%notfound;
+
+      -- Check whether the assignment hass enough accrual for vacation to be
+      -- taken
+      ln_accr := per_utility_functions.get_net_accrual
+                 (p_assignment_id     => lc_get_vac.assignment_id
+                 ,p_payroll_id        => gn_pay_id
+                 ,p_business_group_id => pi_bus_grp_id
+                 ,p_calculation_date  => pi_wk_end_date
+                 ,p_assignment_action_id => -1
+                 ,p_plan_id           => gn_vac_plan);
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || lc_get_vac.person_id
+                                      || ' Vac Taken = ' || lc_get_vac.hours
+                                      || '. Net Accrual remaining = ' || ln_accr);
+
+      if ln_accr < lc_get_vac.hours then
+         INS_ERR(pi_req_id
+                ,pi_org_id
+                ,lc_get_vac.person_id
+                ,'INS_VAC_ACCR'
+                ,'Vac Taken = ' || lc_get_vac.hours
+                 || '. Net Accrual remaining = ' || ln_accr);
+      end if;
+
+   end loop;
+   close c_get_vac;
+
+   open c_get_sic;
+   loop
+      fetch c_get_sic into lc_get_sic;
+      exit when c_get_sic%notfound;
+
+      -- Check whether the assignment hass enough accrual for vacation to be
+      -- taken
+      ln_accr := per_utility_functions.get_net_accrual
+                 (p_assignment_id     => lc_get_sic.assignment_id
+                 ,p_payroll_id        => gn_pay_id
+                 ,p_business_group_id => pi_bus_grp_id
+                 ,p_calculation_date  => pi_wk_end_date
+                 ,p_assignment_action_id => -1
+                 ,p_plan_id           => gn_sic_plan);
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || lc_get_sic.person_id
+                                      || ' Sick Taken = ' || lc_get_sic.hours
+                                      || '. Net Accrual remaining = ' || ln_accr);
+
+      if ln_accr < lc_get_sic.hours then
+         INS_ERR(pi_req_id
+                ,pi_org_id
+                ,lc_get_sic.person_id
+                ,'INS_SIC_ACCR'
+                ,'Sick Taken = ' || lc_get_sic.hours
+                 || '. Net Accrual remaining = ' || ln_accr);
+      end if;
+
+   end loop;
+   close c_get_sic;
+
+   open c_get_pers;
+   loop
+      fetch c_get_pers into lc_get_pers;
+      exit when c_get_pers%notfound;
+
+      -- Check whether the assignment hass enough accrual for vacation to be
+      -- taken
+      ln_accr := per_utility_functions.get_net_accrual
+                 (p_assignment_id     => lc_get_pers.assignment_id
+                 ,p_payroll_id        => gn_pay_id
+                 ,p_business_group_id => pi_bus_grp_id
+                 ,p_calculation_date  => pi_wk_end_date
+                 ,p_assignment_action_id => -1
+                 ,p_plan_id           => gn_pers_plan);
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || lc_get_pers.person_id
+                                      || ' Pers Taken = ' || lc_get_pers.hours
+                                      || '. Net Accrual remaining = ' || ln_accr);
+
+      if ln_accr < lc_get_sic.hours then
+         INS_ERR(pi_req_id
+                ,pi_org_id
+                ,lc_get_pers.person_id
+                ,'INS_PERS_ACCR'
+                ,'Pers Taken = ' || lc_get_pers.hours
+                 || '. Net Accrual remaining = ' || ln_accr);
+      end if;
+
+   end loop;
+   close c_get_pers;
+
+   -- Hours for dates after Term Date
+   open c_get_pay_after_term_date;
+   loop
+      fetch c_get_pay_after_term_date into ln_pers_id
+                                          ,ld_term_date;
+      exit when c_get_pay_after_term_date%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Hours for dates after term date');
+
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'HOURS_AFTER_TERM_DATE'
+             ,'Hours for dates after term date ' || to_char(ld_term_date,'DD-MON-YYYY'));
+
+   end loop;
+   close c_get_pay_after_term_date;
+
+   -- Rate Override Limit. Payroll <> 'WAGARG'
+   if gv_pay <> 'WAGARG' then
+      open c_get_rate_ovrride_limit;
+      loop
+         fetch c_get_rate_ovrride_limit into ln_pers_id;
+         exit when c_get_rate_ovrride_limit%notfound;
+
+         xxarg_hr_util_pkg.debug_message(gv_debug
+                                        ,'Person ID = ' || ln_pers_id
+                                         || ' Rate < 7.25 or Rate > 50');
+
+         INS_ERR(pi_req_id
+                ,pi_org_id
+                ,ln_pers_id
+                ,'RATE_LIMIT'
+                ,'Override rate < 7.25 or > 50');
+
+      end loop;
+      close c_get_rate_ovrride_limit;
+   end if;
+
+   -- Org cost center diff than location cost center
+   -- Run this only before transfer
+   if gv_mode = 'OTL' then
+      open c_get_cc_diff;
+      loop
+         fetch c_get_cc_diff into ln_pers_id;
+         exit when c_get_cc_diff%notfound;
+
+         xxarg_hr_util_pkg.debug_message(gv_debug
+                                        ,'Person ID = ' || ln_pers_id
+                                         || ' Cost center different than location');
+
+         INS_ERR(pi_req_id
+                ,pi_org_id
+                ,ln_pers_id
+                ,'CC_LOC_DIFF'
+                ,'Cost Center is different than location');
+
+      end loop;
+      close c_get_cc_diff;
+   end if;
+
+   -- Worked > 90 hours. Bakery Drivers not included
+   open c_get_hours_90;
+   loop
+      fetch c_get_hours_90 into ln_pers_id
+                               ,ln_hours;
+      exit when c_get_hours_90%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Worked hours > 90');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'WRK_HOURS_90'
+             ,'Total worked hours > 90. Total Hours Entered = ' || ln_hours);
+   end loop;
+   close c_get_hours_90;
+
+
+   -- LOA status with hours
+   open c_loa_with_hours;
+   loop
+      fetch c_loa_with_hours into ln_pers_id
+                                 ,lv_user_status
+                                 ,ld_eff_date;
+      exit when c_loa_with_hours%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' LOA status with hours');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'LOA_WITH_HOURS'
+             ,'LOA status(' || lv_user_status || ') with hours');
+   end loop;
+   close c_loa_with_hours;
+
+   -- Overtime more than 30% of total hours
+   open c_ot_grt_30;
+   loop
+      fetch c_ot_grt_30 into ln_pers_id
+                            ,ln_reg
+                            ,ln_ovt;
+
+      exit when c_ot_grt_30%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' OT more than 30% of hours');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'OT_GT_30'
+             ,'OT more than 30% of hours.'
+             || ' OT Hours = ' || ln_ovt
+             || ' Reg Hours = ' || ln_reg);
+   end loop;
+   close c_ot_grt_30;
+
+   open c_over_std_hours;
+   loop
+      fetch c_over_std_hours into ln_pers_id
+                                 ,ln_hours
+                                 ,ln_norm_hours;
+
+      exit when c_over_std_hours%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Employee over standard hours.');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'OVER_STD_HOURS'
+             ,'Employee over standard hours. Standard hours = '
+              || ln_norm_hours
+              || ' Hours entered = ' || ln_hours);
+
+   end loop;
+   close c_over_std_hours;
+
+   -- Employees under standard hours
+   open c_under_std_hours;
+   loop
+      fetch c_under_std_hours into ln_pers_id
+                                  ,ln_hours
+                                  ,ln_norm_hours;
+
+      exit when c_under_std_hours%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Employee under standard hours.');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'OVER_STD_HOURS'
+             ,'Employee under standard hours. Standard hours = '
+              || ln_norm_hours
+              || ' Hours entered = ' || ln_hours);
+
+   end loop;
+   close c_under_std_hours;
+
+   open c_mismatch_policy;
+   loop
+      fetch c_mismatch_policy into ln_pers_id
+                                  ,lv_act_pol
+                                  ,lv_cur_pol;
+
+      exit when c_mismatch_policy%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Mismatch in policy');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'OVER_STD_HOURS'
+             ,'Mismatch in Policy. Current Policy = ' || lv_cur_pol
+              || '. Actual Earning Policy = ' || lv_act_pol);
+
+   end loop;
+   close c_mismatch_policy;
+   
+   -- Job code 110 and Vacation hours < 30
+   open c_vac_ne_30;
+   loop
+      fetch c_vac_ne_30 into ln_pers_id
+                                          ,ln_hours;
+      exit when c_vac_ne_30%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Vac < 30');
+
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'VAC_LE_30'
+             ,'Job Code 110 with Vacation hours. Vac Hours: ' || ln_hours);
+
+   end loop;
+   close c_vac_ne_30;
+
+
+   -- -ve hours in the timecard
+   open c_negative_hours;
+   loop
+      fetch c_negative_hours into ln_pers_id
+                                          ,ln_hours;
+      exit when c_negative_hours%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' -ve Hours');
+
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'NEG_HRS_FOR_EMP'
+             ,'-ve hours for employee Total Hours: ' || ln_hours);
+
+   end loop;
+   close c_negative_hours;
+   
+   xxarg_hr_util_pkg.debug(gv_debug
+                          ,gc_pack || '.GET_GEN_EDITS'
+                          ,100);
+
+END GET_GEN_EDITS;
+
+/*******************************************************************************
+    Name         :   GET_BAK_DRV_EDITS
+    Scope        :   GLOBAL
+    Description  :   This function is used to get general Bakery Driver Edits
+    Author       :   Kumaresan
+*******************************************************************************/
+PROCEDURE GET_BAK_EDITS(pi_bus_grp_id  IN NUMBER
+                       ,pi_req_id      IN NUMBER
+                       ,pi_org_id      IN NUMBER
+                       ,pi_wk_str_date IN DATE
+                       ,pi_wk_end_date IN DATE) IS
+
+-- Non MLP first 90 days
+cursor c_get_non_mlp is
+select xxmt.person_id person_id
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and exists (select 'Exists'
+                 from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                where xxde.request_id = pi_req_id
+                  and xxde.organization_id = pi_org_id
+                  and xxde.assignment_id = xxmt.assignment_id
+                  and xxde.element_name <> 'MLP')
+   and paf.job_id in (SELECT job_id
+                        FROM per_jobs
+                       WHERE NAME IN('Driver Probationary'))
+/* and paf.job_id in (select dtls.criteria_value
+                        from xxarg_hr_pcs pcs
+                            ,xxarg_hr_pc_dtls dtls
+                       where pcs.process_id = dtls.process_id
+                         and trunc(sysdate) between pcs.effective_start_date
+                                                and pcs.effective_end_date
+                         and trunc(sysdate) between dtls.effective_start_date
+                                                and dtls.effective_end_date
+                         and dtls.criteria_code = 'JOB'
+                         and pcs.process_name = 'OTL_US_PROB_BAK_DRV')*/
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+
+-- Past 90 days with MLP
+cursor c_get_mlp_90 is
+select xxmt.person_id person_id
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and exists (select 'Exists'
+                 from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                where xxde.request_id = pi_req_id
+                  and xxde.organization_id = pi_org_id
+                  and xxde.assignment_id = xxmt.assignment_id
+                  and xxde.element_name = 'MLP')
+   and paf.job_id in (SELECT job_id
+                        FROM per_jobs
+                       WHERE NAME IN('Casual Driver'
+                                    ,'Driver Full-Time'))
+/*   and paf.job_id in (select dtls.criteria_value
+                        from xxarg_hr_pcs pcs
+                            ,xxarg_hr_pc_dtls dtls
+                       where pcs.process_id = dtls.process_id
+                         and trunc(sysdate) between pcs.effective_start_date
+                                                and pcs.effective_end_date
+                         and trunc(sysdate) between dtls.effective_start_date
+                                                and dtls.effective_end_date
+                         and dtls.criteria_code = 'JOB'
+                         and pcs.process_name = 'OTL_US_BAK_NPROB_DRV')*/
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+cursor c_over_3_runs_np is
+with xxbak_runs as(
+select xxde.person_id
+      ,max(xxde.assignment_id) assignment_id
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and element_name in ('MLL', 'MLN', 'MLC', 'MLS')
+ group by person_id
+ having count(distinct date_worked) > 3)
+select xxmt.person_id
+  from xxbak_runs xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+ where paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and not exists (select 'Exists'
+                     from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                     where xxde.request_id = pi_req_id
+                       and xxde.organization_id = pi_org_id
+                       and xxde.assignment_id = xxmt.assignment_id
+                       and xxde.element_name in ('MXL','MXN','MXC','MXS'))
+   and paf.job_id in (SELECT job_id
+                        FROM per_jobs
+                       WHERE NAME IN('Casual Driver'
+                                    ,'Driver Full-Time'))
+/*   and paf.job_id in (select dtls.criteria_value
+                        from xxarg_hr_pcs pcs
+                            ,xxarg_hr_pc_dtls dtls
+                       where pcs.process_id = dtls.process_id
+                         and trunc(sysdate) between pcs.effective_start_date
+                                                and pcs.effective_end_date
+                         and trunc(sysdate) between dtls.effective_start_date
+                                                and dtls.effective_end_date
+                         and dtls.criteria_code = 'JOB'
+                         and pcs.process_name = 'OTL_US_BAK_NPROB_DRV')*/
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+
+cursor c_over_3_runs is
+with xxbak_runs as(
+select xxde.person_id
+      ,max(xxde.assignment_id) assignment_id
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and element_name in ('MLL', 'MLN', 'MLC', 'MLS', 'MLP'
+                       , 'MXC', 'MXL', 'MXN', 'MXS')
+ group by person_id
+ having count(distinct date_worked) > 3)
+select xxmt.person_id
+  from xxbak_runs xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+ where paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and paf.job_id in (SELECT job_id
+                        FROM per_jobs
+                       WHERE NAME IN('Casual Driver'
+                                    ,'Driver Full-Time'))
+/*   and paf.job_id in (select dtls.criteria_value
+                        from xxarg_hr_pcs pcs
+                            ,xxarg_hr_pc_dtls dtls
+                       where pcs.process_id = dtls.process_id
+                         and trunc(sysdate) between pcs.effective_start_date
+                                                and pcs.effective_end_date
+                         and trunc(sysdate) between dtls.effective_start_date
+                                                and dtls.effective_end_date
+                         and dtls.criteria_code = 'JOB'
+                         and pcs.process_name = 'OTL_US_BAK_NPROB_DRV')*/
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+
+cursor c_under_4_runs_wp is
+with xxbak_runs as(
+select xxde.person_id
+      ,max(xxde.assignment_id) assignment_id
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and element_name in ('MLL', 'MLN', 'MLC', 'MLS')
+ group by person_id
+ having count(distinct date_worked) < 3)
+select xxmt.person_id
+  from xxbak_runs xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+ where paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and exists (select 'Exists'
+                 from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                where xxde.request_id = pi_req_id
+                  and xxde.organization_id = pi_org_id
+                  and xxde.assignment_id = xxmt.assignment_id
+                  and xxde.element_name in ('MXL','MXN','MXC','MXS'))
+   and paf.job_id in (SELECT job_id
+                        FROM per_jobs
+                       WHERE NAME IN('Casual Driver'
+                                    ,'Driver Full-Time'))
+/*   and paf.job_id in (select dtls.criteria_value
+                        from xxarg_hr_pcs pcs
+                            ,xxarg_hr_pc_dtls dtls
+                       where pcs.process_id = dtls.process_id
+                         and trunc(sysdate) between pcs.effective_start_date
+                                                and pcs.effective_end_date
+                         and trunc(sysdate) between dtls.effective_start_date
+                                                and dtls.effective_end_date
+                         and dtls.criteria_code = 'JOB'
+                         and pcs.process_name = 'OTL_US_BAK_NPROB_DRV')*/
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+cursor c_prem_not_sat is
+select xxmt.person_id person_id
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and exists (select 'Exists'
+                 from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                where xxde.request_id = pi_req_id
+                  and xxde.organization_id = pi_org_id
+                  and xxde.assignment_id = xxmt.assignment_id
+                  and xxde.element_name in ('MXL', 'MXN', 'MXC', 'MXS')
+                  and trim(to_char(date_worked,'DAY')) <> 'SATURDAY')
+   and paf.job_id in (SELECT job_id
+                        FROM per_jobs
+                       WHERE NAME IN('Casual Driver'
+                                    ,'Driver Full-Time'
+                                    ,'Driver Probationary'))
+/*   and paf.job_id in (select dtls.criteria_value
+                        from xxarg_hr_pcs pcs
+                            ,xxarg_hr_pc_dtls dtls
+                       where pcs.process_id = dtls.process_id
+                         and trunc(sysdate) between pcs.effective_start_date
+                                                and pcs.effective_end_date
+                         and trunc(sysdate) between dtls.effective_start_date
+                                                and dtls.effective_end_date
+                         and dtls.criteria_code = 'JOB'
+                         and pcs.process_name = 'OTL_US_BAK_DRV')*/
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+-- Personal Bday over 8 hours
+cursor c_pbday_over_8 is
+select xxde.person_id
+      ,sum(hours) hours
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and element_name in ('PER', 'PRB')
+ group by person_id
+ having sum(hours) > 8;
+
+cursor c_pday_in_nbday_wk is
+select xxmt.person_id person_id
+      ,papf.date_of_birth
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+      ,per_all_people_f papf
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and papf.person_id = xxmt.person_id
+   and pi_wk_end_date between papf.effective_start_date
+                          and papf.effective_end_date
+   and papf.date_of_birth not between pi_wk_str_date
+                                  and pi_wk_end_date
+   and exists (select 'Exists'
+                 from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                where xxde.request_id = pi_req_id
+                  and xxde.organization_id = pi_org_id
+                  and xxde.assignment_id = xxmt.assignment_id
+                  and xxde.element_name in ('PER','PRB'));
+
+-- No birthday in bday week
+cursor c_nbday_in_bday_wk is
+select xxmt.person_id person_id
+      ,papf.date_of_birth
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+      ,per_all_people_f papf
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and papf.person_id = xxmt.person_id
+   and pi_wk_end_date between papf.effective_start_date
+                          and papf.effective_end_date
+   and papf.date_of_birth between pi_wk_str_date
+                              and pi_wk_end_date
+   and not exists (select 'Exists'
+                    from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                   where xxde.request_id = pi_req_id
+                     and xxde.organization_id = pi_org_id
+                     and xxde.assignment_id = xxmt.assignment_id
+                     and xxde.element_name in ('PER','PRB'));
+
+--  Daily hours limit of 12 hours
+cursor c_dly_hrs_limit is
+with xxbak_runs as(
+select distinct
+       xxde.person_id
+      ,max(xxde.assignment_id) assignment_id
+      ,date_worked
+      ,sum(hours) hours
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and xxde.element_name in ('REG','OT','DT','TRN','PBK')
+ group by person_id
+         ,date_worked
+ having sum(hours) > 12)
+select xxmt.person_id
+      ,date_worked
+      ,hours
+  from xxbak_runs xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+ where paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and paf.job_id not in (SELECT job_id
+                            FROM per_jobs
+                           WHERE NAME IN('Casual Driver'
+                                        ,'Driver Full-Time'
+                                        ,'Driver Probationary'))
+/*   and paf.job_id not in (select dtls.criteria_value
+                            from xxarg_hr_pcs pcs
+                                ,xxarg_hr_pc_dtls dtls
+                           where pcs.process_id = dtls.process_id
+                             and trunc(sysdate) between pcs.effective_start_date
+                                                    and pcs.effective_end_date
+                             and trunc(sysdate) between dtls.effective_start_date
+                                                    and dtls.effective_end_date
+                             and dtls.criteria_code = 'JOB'
+                             and pcs.process_name = 'OTL_US_BAK_DRV')*/
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+-- Flour runs with Bun runs
+cursor c_flour_with_bun is
+with xxbak_runs as(
+select xxde.person_id
+      ,max(xxde.assignment_id) assignment_id
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and element_name in ('FLR','FLX')
+ group by person_id
+ having count(distinct date_worked) >= 3
+intersect
+select xxde.person_id
+      ,max(xxde.assignment_id) assignment_id
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and element_name in ('MLL','MLN','MLC','MLS','MLP')
+ group by person_id
+ having count(distinct date_worked) > 2)
+select xxmt.person_id
+  from xxbak_runs xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+ where paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and not exists (select 'Exists'
+                     from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                    where xxde.request_id = pi_req_id
+                      and xxde.organization_id = pi_org_id
+                      and xxde.assignment_id = xxmt.assignment_id
+                      and xxde.element_name in ('MXL','MXN','MXC','MXS'))
+   and paf.job_id in (SELECT job_id
+                        FROM per_jobs
+                       WHERE NAME IN('Casual Driver'
+                                    ,'Driver Full-Time'))
+/*   and paf.job_id in (select dtls.criteria_value
+                        from xxarg_hr_pcs pcs
+                            ,xxarg_hr_pc_dtls dtls
+                       where pcs.process_id = dtls.process_id
+                         and trunc(sysdate) between pcs.effective_start_date
+                                                and pcs.effective_end_date
+                         and trunc(sysdate) between dtls.effective_start_date
+                                                and dtls.effective_end_date
+                         and dtls.criteria_code = 'JOB'
+                         and pcs.process_name = 'OTL_US_BAK_NPROB_DRV')*/
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+
+cursor c_vac_ne_40 is
+with xxbak_runs as(
+select xxde.person_id
+      ,max(xxde.assignment_id) assignment_id
+      ,sum(hours) hours
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+   and element_name in ('VAC', 'VACOT')
+ group by person_id
+ having sum(hours) <> 40)
+select xxmt.person_id
+      ,hours
+  from xxbak_runs xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+ where paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and paf.job_id in (SELECT job_id
+                        FROM per_jobs
+                       WHERE NAME IN('Casual Driver'
+                                    ,'Driver Full-Time'
+                                    ,'Driver Probationary'))
+/*   and paf.job_id in (select dtls.criteria_value
+                        from xxarg_hr_pcs pcs
+                            ,xxarg_hr_pc_dtls dtls
+                       where pcs.process_id = dtls.process_id
+                         and trunc(sysdate) between pcs.effective_start_date
+                                                and pcs.effective_end_date
+                         and trunc(sysdate) between dtls.effective_start_date
+                                                and dtls.effective_end_date
+                         and dtls.criteria_code = 'JOB'
+                         and pcs.process_name = 'OTL_US_BAK_DRV')*/
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+
+-- No overtime when hours > normal hours
+cursor c_no_ot_grt_reg is
+with xxbak_runs as(
+select xxde.person_id
+      ,max(xxde.assignment_id) assignment_id
+      ,sum(decode(element_name
+                  ,'OT',hours
+                  ,'DT',hours
+                  ,0)) ovt
+      ,sum(decode(element_name
+                  ,'REG',hours
+                  ,'TRN',hours
+                  ,'PBK',hours
+                  ,0)) reg
+  from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+ where xxde.request_id = pi_req_id
+   and xxde.organization_id = pi_org_id
+ group by person_id)
+select xxmt.person_id
+      ,xxmt.reg
+  from xxbak_runs xxmt
+      ,apps.per_all_assignments_f paf
+      ,apps.per_periods_of_service ppos
+ where paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and xxmt.reg > paf.normal_hours
+   and xxmt.ovt <= 0
+   and paf.job_id not in (SELECT job_id
+                            FROM per_jobs
+                           WHERE NAME IN('Casual Driver'
+                                        ,'Driver Full-Time'
+                                        ,'Driver Probationary'))
+/*   and paf.job_id not in (select dtls.criteria_value
+                            from xxarg_hr_pcs pcs
+                                ,xxarg_hr_pc_dtls dtls
+                           where pcs.process_id = dtls.process_id
+                             and trunc(sysdate) between pcs.effective_start_date
+                                                    and pcs.effective_end_date
+                             and trunc(sysdate) between dtls.effective_start_date
+                                                    and dtls.effective_end_date
+                             and dtls.criteria_code = 'JOB'
+                             and pcs.process_name = 'OTL_US_BAK_DRV')*/
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+   ln_pers_id   number;
+   ln_hours     number;
+   ln_tpers_id  number;
+   ln_ovt       number;
+   ln_reg       number;
+
+   lv_exists varchar2(10);
+
+   ld_date_worked date;
+   ld_dob         date;
+
+BEGIN
+
+   xxarg_hr_util_pkg.debug(gv_debug
+                          ,gc_pack || '.GET_BAK_DRV_EDITS'
+                          ,10);
+
+   -- Probationary Bakery Drivers. Non MLP code
+   open c_get_non_mlp;
+   loop
+      fetch c_get_non_mlp into ln_pers_id;
+      exit when c_get_non_mlp%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Non ML first 90 days');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'NON_MLP_90'
+             ,'Non MLP first 90 days');
+   end loop;
+   close c_get_non_mlp;
+
+   -- Non-probationary Bakery Drivers. MLP code
+   open c_get_mlp_90;
+   loop
+      fetch c_get_mlp_90 into ln_pers_id;
+      exit when c_get_mlp_90%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Past 90 days with MLP');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'PAST_90_MLP'
+             ,'Past 90 days with MLP');
+   end loop;
+   close c_get_mlp_90;
+
+   -- Non-probationary Bakery Drivers. Over 3 runs no premium
+   open c_over_3_runs_np;
+   loop
+      fetch c_over_3_runs_np into ln_pers_id;
+      exit when c_over_3_runs_np%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Over 3 runs no premium');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'OVER_3_RUNS_NO_PREM'
+             ,'Over 3 runs no premium');
+   end loop;
+   close c_over_3_runs_np;
+
+   -- Non-probationary Bakery Drivers. Over 3 runs
+   open c_over_3_runs;
+   loop
+      fetch c_over_3_runs into ln_pers_id;
+      exit when c_over_3_runs%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Over 3 runs');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'OVER_3_RUNS'
+             ,'Over 3 runs');
+   end loop;
+   close c_over_3_runs;
+
+
+   -- Non-probationary Bakery Drivers. Uner 4 runs, no premium
+   open c_under_4_runs_wp;
+   loop
+      fetch c_under_4_runs_wp into ln_pers_id;
+      exit when c_under_4_runs_wp%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Under 3 runs with premium');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'UNDER_4_RUNS_WP'
+             ,'Under 3 runs with premium');
+   end loop;
+   close c_under_4_runs_wp;
+
+   -- Premium mileage pay not on Saturday
+   open c_prem_not_sat;
+   loop
+      fetch c_prem_not_sat into ln_pers_id;
+      exit when c_prem_not_sat%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Premium mileage pay exists not on a Saturday');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'PREM_MIL_NOT_ON_SAT'
+             ,'Premium mileage pay exists not on a Saturday');
+   end loop;
+   close c_prem_not_sat;
+
+   -- Personal birthday over 8
+   open c_pbday_over_8;
+   loop
+      fetch c_pbday_over_8 into ln_pers_id
+                               ,ln_hours;
+      exit when c_pbday_over_8%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Per Bday over 8 hours');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'PBDAY_OVER_8'
+             ,'Per Bday over 8 hours. Bday hours entered = ' || ln_hours);
+   end loop;
+   close c_pbday_over_8;
+
+   ld_dob := null;
+
+   -- Bday in non Bday week
+   open c_pday_in_nbday_wk;
+   loop
+      fetch c_pday_in_nbday_wk into ln_pers_id
+                                    ,ld_dob;
+      exit when c_pday_in_nbday_wk%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Bday in non Bday week.'
+                                      || ' Employee Bday falls on '
+                                      || to_char(ld_dob,'DD-MON-YYYY'));
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'PBDAY_IN_NDAY_WK'
+             ,'Bday in non Bday week');
+   end loop;
+   close c_pday_in_nbday_wk;
+
+   ld_dob := null;
+   -- No Bday in Bday week
+   open c_nbday_in_bday_wk;
+   loop
+      fetch c_nbday_in_bday_wk into ln_pers_id
+                                   ,ld_dob;
+      exit when c_nbday_in_bday_wk%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Bday in non Bday week.'
+                                      || ' Employee Bday falls on '
+                                      || to_char(ld_dob,'DD-MON-YYYY'));
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'PBDAY_IN_NDAY_WK'
+             ,'Bday in non Bday week');
+   end loop;
+   close c_nbday_in_bday_wk;
+
+   -- Flour runs with bun runs
+   open c_flour_with_bun;
+   loop
+      fetch c_flour_with_bun into ln_pers_id;
+      exit when c_flour_with_bun%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' 3 or more flour runs with bun runs');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'FLOUR_RUN_WITH_BUN'
+             ,'3 or more flour runs with bun runs');
+   end loop;
+   close c_flour_with_bun;
+
+   -- No Bday in Bday week
+   open c_dly_hrs_limit;
+   loop
+      fetch c_dly_hrs_limit into ln_pers_id
+                                ,ld_date_worked
+                                ,ln_hours;
+      exit when c_dly_hrs_limit%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Daily Hours limit reached. '
+                                      || ln_hours || ' hours of time entry on '
+                                      || to_char(ld_date_worked,'DD-MON-YYYY'));
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'BAK_DHOURS_LIMIT'
+             ,'Daily Hours limit reached. '
+              || ln_hours || ' hours of time entry on '
+              || to_char(ld_date_worked,'DD-MON-YYYY'));
+   end loop;
+   close c_dly_hrs_limit;
+
+   -- No Bday in Bday week
+   open c_vac_ne_40;
+   loop
+      fetch c_vac_ne_40 into ln_pers_id
+                            ,ln_hours;
+      exit when c_vac_ne_40%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' VAC <> 40 hrs');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'VAC_NE_40'
+             ,'VAC <> 40 hours. Vacation entered = ' || ln_hours);
+   end loop;
+   close c_vac_ne_40;
+
+   -- No Bday in Bday week
+   open c_no_ot_grt_reg;
+   loop
+      fetch c_no_ot_grt_reg into ln_pers_id
+                                ,ln_reg;
+      exit when c_no_ot_grt_reg%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' No OT with more than standard hours. '
+                                      || 'Total regular hours = '
+                                      || ln_reg);
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'BAK_NO_OVT'
+             ,'No OT with more than standard hours. '
+              || 'Total regular hours = '
+              || ln_reg);
+   end loop;
+   close c_no_ot_grt_reg;
+
+
+END GET_BAK_EDITS;
+
+/*******************************************************************************
+    Name         :   GET_STORE_EDITS
+    Scope        :   GLOBAL
+    Description  :   This function is used to get store edits
+    Author       :   Kumaresan
+*******************************************************************************/
+PROCEDURE GET_STORE_EDITS(pi_bus_grp_id  IN NUMBER
+                         ,pi_req_id      IN NUMBER
+                         ,pi_org_id      IN NUMBER
+                         ,pi_wk_str_date IN DATE
+                         ,pi_wk_end_date IN DATE) IS
+
+cursor c_get_mult_cc is
+select person_id
+  from xxarg.xxarg_hr_otl_data_edit_tbl xx
+      ,hr_organization_units hro
+      ,pay_cost_allocation_keyflex pcak
+ where xx.request_id = pi_req_id
+   and xx.organization_id = pi_org_id
+   and hro.organization_id = xx.organization_id
+   and hro.cost_allocation_keyflex_id = pcak.cost_allocation_keyflex_id
+ group by person_id
+  having count(distinct nvl(xx.cost_center, pcak.segment2)) > 1;
+
+cursor c_get_mult_cc_det(cp_pers_id number) is
+select nvl(xx.cost_center, pcak.segment2)
+  from xxarg.xxarg_hr_otl_data_edit_tbl xx
+      ,hr_organization_units hro
+      ,pay_cost_allocation_keyflex pcak
+ where xx.request_id = pi_req_id
+   and xx.person_id = cp_pers_id
+   and xx.organization_id = pi_org_id
+   and hro.organization_id = xx.organization_id
+   and hro.cost_allocation_keyflex_id = pcak.cost_allocation_keyflex_id
+ group by person_id
+         ,nvl(xx.cost_center, pcak.segment2);
+
+cursor c_get_org_name is
+select name
+  from hr_organization_units
+ where organization_id = pi_org_id;
+
+-- Crew hours for Wendys
+cursor c_under_200_crew_hrs_w is
+select sum(hours)
+ from xxarg.xxarg_hr_otl_data_edit_tbl xx
+     ,apps.per_all_assignments_f paf
+     ,apps.per_jobs pj
+where xx.request_id = pi_req_id
+  and xx.organization_id = pi_org_id
+  and xx.assignment_id = paf.assignment_id
+  and paf.job_id = pj.job_id
+  and pj.attribute1 >= '0001'
+  and pj.attribute1 < '0020'
+  and pi_wk_end_date between paf.effective_start_date
+                         and paf.effective_end_date;
+
+-- Management hours for Wendys
+cursor c_under_80_mgt_hrs_w is
+select sum(hours)
+ from xxarg.xxarg_hr_otl_data_edit_tbl xx
+     ,apps.per_all_assignments_f paf
+     ,apps.per_jobs pj
+where xx.request_id = pi_req_id
+  and xx.organization_id = pi_org_id
+  and xx.assignment_id = paf.assignment_id
+  and paf.job_id = pj.job_id
+  and pj.attribute1 >= '0020'
+  and pj.attribute1 <= '9999'
+  and pi_wk_end_date between paf.effective_start_date
+                         and paf.effective_end_date;
+
+cursor c_get_count_hrs is
+select nvl(count(organization_id),0)
+  from xxarg.xxarg_hr_otl_data_edit_tbl xx
+ where xx.request_id = pi_req_id
+  and xx.organization_id = pi_org_id;
+
+-- Crew hours for Arbys
+cursor c_under_200_crew_hrs_a is
+select sum(hours)
+ from xxarg.xxarg_hr_otl_data_edit_tbl xx
+     ,apps.per_all_assignments_f paf
+     ,apps.per_jobs pj
+where xx.request_id = pi_req_id
+  and xx.organization_id = pi_org_id
+  and xx.assignment_id = paf.assignment_id
+  and paf.job_id = pj.job_id
+  and pj.attribute1 < '124'
+  and pi_wk_end_date between paf.effective_start_date
+                         and paf.effective_end_date;
+
+-- Management hours for Arbys
+cursor c_under_80_mgt_hrs_a is
+select sum(hours)
+ from xxarg.xxarg_hr_otl_data_edit_tbl xx
+     ,apps.per_all_assignments_f paf
+     ,apps.per_jobs pj
+where xx.request_id = pi_req_id
+  and xx.organization_id = pi_org_id
+  and xx.assignment_id = paf.assignment_id
+  and paf.job_id = pj.job_id
+  and pj.attribute1 >= '124'
+  and pi_wk_end_date between paf.effective_start_date
+                         and paf.effective_end_date;
+
+   ln_pers_id number;
+   ln_hours   number;
+   ln_count   number;
+
+   lv_cc       varchar2(250);
+   lv_org_name varchar2(250);
+   lv_ind_cc   varchar2(20);
+
+BEGIN
+   open c_get_org_name;
+   fetch c_get_org_name into lv_org_name;
+   close c_get_org_name;
+
+   if upper(lv_org_name) like 'ARBY%' then
+
+      open c_get_count_hrs;
+      fetch c_get_count_hrs into ln_count;
+      close c_get_count_hrs;
+
+      open c_under_200_crew_hrs_a;
+      fetch c_under_200_crew_hrs_a into ln_hours;
+      close c_under_200_crew_hrs_a;
+
+      if ln_hours < 200 and ln_count > 0 then
+         INS_ERR(pi_req_id
+                ,pi_org_id
+                ,null
+                ,'CREW_HOURS_LESS_200'
+                ,'Under 200 Crew Hours for the week. Total Crew hours = '
+                 || ln_hours);
+      end if;
+
+      ln_hours := 0;
+      open c_under_80_mgt_hrs_w;
+      fetch c_under_80_mgt_hrs_w into ln_hours;
+      close c_under_80_mgt_hrs_w;
+
+      if ln_hours < 200 and ln_count > 0 then
+         INS_ERR(pi_req_id
+                ,pi_org_id
+                ,null
+                ,'MGT_HOURS_LESS_80'
+                ,'Under 80 Management Hours for the week. Total Management hours = '
+                 || ln_hours);
+      end if;
+
+   else
+
+      open c_get_count_hrs;
+      fetch c_get_count_hrs into ln_count;
+      close c_get_count_hrs;
+
+      open c_under_200_crew_hrs_w;
+      fetch c_under_200_crew_hrs_w into ln_hours;
+      close c_under_200_crew_hrs_w;
+
+      if ln_hours < 200 and ln_count > 0 then
+         INS_ERR(pi_req_id
+                ,pi_org_id
+                ,null
+                ,'CREW_HOURS_LESS_200'
+                ,'Under 200 Crew Hours for the week. Total Crew hours = '
+                 || ln_hours);
+      end if;
+
+      open c_under_80_mgt_hrs_a;
+      fetch c_under_80_mgt_hrs_a into ln_hours;
+      close c_under_80_mgt_hrs_a;
+
+      if ln_hours < 200 and ln_count > 0 then
+         INS_ERR(pi_req_id
+                ,pi_org_id
+                ,null
+                ,'MGT_HOURS_LESS_80'
+                ,'Under 80 Management Hours for the week. Total Management hours = '
+                 || ln_hours);
+      end if;
+   end if;
+
+/*   open c_get_mult_cc;
+   loop
+      fetch c_get_mult_cc into ln_pers_id;
+      exit when c_get_mult_cc%notfound;
+
+      lv_cc     := null;
+      lv_ind_cc := null;
+      -- Get Cost Center
+      open c_get_mult_cc_det(ln_pers_id);
+      loop
+         fetch c_get_mult_cc_det into lv_ind_cc;
+         exit when c_get_mult_cc_det%notfound;
+
+         if lv_cc is null then
+            lv_cc := lv_ind_cc;
+         else
+            lv_cc := lv_cc || ', ' || lv_ind_cc;
+         end if;
+      end loop;
+      close c_get_mult_cc_det;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Employee worked at multiple cost centers');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'MULT_CC'
+             ,'Employee worked in multiple cost centers. Cost centers worked are '
+              || lv_cc);
+
+   end loop;
+   close c_get_mult_cc;*/
+END;
+
+/*******************************************************************************
+    Name         :   GET_ARBYS_TRG_DATA
+    Scope        :   GLOBAL
+    Description  :   This function is used to get edits for Arbys training
+                     employees
+    Author       :   Kumaresan
+*******************************************************************************/
+PROCEDURE GET_ARBYS_TRG_EDIT(pi_bus_grp_id  IN NUMBER
+                            ,pi_req_id      IN NUMBER
+                            ,pi_org_id      IN NUMBER
+                            ,pi_wk_str_date IN DATE
+                            ,pi_wk_end_date IN DATE) IS
+-- Pay after termination date
+cursor c_reg_pay_exists is
+select xxmt.person_id person_id
+  from xxarg.xxarg_hr_multi_thread_tbl xxmt
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+ where xxmt.request_id = pi_req_id
+   and xxmt.organization_id = pi_org_id
+   and paf.assignment_id = xxmt.assignment_id
+   and paf.period_of_service_id = ppos.period_of_service_id
+   and exists (select 'Exists'
+                 from xxarg.xxarg_hr_otl_data_edit_tbl xxde
+                where xxde.request_id = pi_req_id
+                  and xxde.organization_id = pi_org_id
+                  and xxde.assignment_id = xxmt.assignment_id
+                  and xxde.element_name = 'REG')
+   and paf.pay_basis_id in (SELECT pay_basis_id
+                              FROM per_pay_bases ppb
+                             WHERE NAME IN ('FLUX')
+                               AND ppb.business_group_id = pi_bus_grp_id)
+/*   and paf.pay_basis_id in (select dtls.criteria_value
+                              from xxarg_hr_pcs pcs
+                                  ,xxarg_hr_pc_dtls dtls
+                             where pcs.process_id = dtls.process_id
+                               and trunc(sysdate) between pcs.effective_start_date
+                                                      and pcs.effective_end_date
+                               and trunc(sysdate) between dtls.effective_start_date
+                                                      and dtls.effective_end_date
+                               and dtls.criteria_code = 'PAY_BASIS'
+                               and pcs.process_name = 'OTL_US_FLUX_TRNG')*/
+   and paf.job_id in (select job_id
+                        from per_jobs
+                       where name in ('Manager Trainee'))
+/*   and paf.job_id in (select dtls.criteria_value
+                        from xxarg_hr_pcs pcs
+                            ,xxarg_hr_pc_dtls dtls
+                       where pcs.process_id = dtls.process_id
+                         and trunc(sysdate) between pcs.effective_start_date
+                                                and pcs.effective_end_date
+                         and trunc(sysdate) between dtls.effective_start_date
+                                                and dtls.effective_end_date
+                         and dtls.criteria_code = 'JOB'
+                         and pcs.process_name = 'OTL_US_FLUX_TRNG')*/
+   and ((ppos.actual_termination_date is null
+         and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between pi_wk_str_date
+                                             and pi_wk_end_date
+          and pi_wk_end_date between paf.effective_start_date
+                                 and paf.effective_end_date));
+
+   ln_pers_id number;
+BEGIN
+   -- LOA status with hours
+   open c_reg_pay_exists;
+   loop
+      fetch c_reg_pay_exists into ln_pers_id;
+      exit when c_reg_pay_exists%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Person ID = ' || ln_pers_id
+                                      || ' Regular Pay exists for Arbys training employee');
+
+      INS_ERR(pi_req_id
+             ,pi_org_id
+             ,ln_pers_id
+             ,'ARBY_TRG_REG'
+             ,'REG exists for Arby''s Training employee');
+   end loop;
+   close c_reg_pay_exists;
+END GET_ARBYS_TRG_EDIT;
+
+
+/*******************************************************************************
+    Name         :   GET_US_REP_DATA
+    Scope        :   GLOBAL
+    Description  :   This function is used to generate the XML for US
+    Author       :   Kumaresan
+*******************************************************************************/
+PROCEDURE GET_US_REP_EDITS(pi_bus_grp_id    IN NUMBER
+                          ,pi_pay_id        IN NUMBER
+                          ,pi_wk_str_date   IN DATE
+                          ,pi_wk_end_date   IN DATE
+                          ,pi_req_id        IN NUMBER
+                          ,pi_thr_num       IN NUMBER) IS
+
+cursor c_get_org is
+select distinct
+       xx.organization_id
+      ,type
+  from xxarg.xxarg_hr_multi_thread_tbl xx
+      ,hr_organization_units hro
+ where xx.request_id = pi_req_id
+   and hro.organization_id = xx.organization_id
+   and thread_number = pi_thr_num;
+
+   ln_org_id   number;
+   lv_org_type varchar2(10);
+
+BEGIN
+
+   -- Fetch Errors
+   open c_get_org;
+   loop
+      fetch c_get_org into ln_org_id
+                          ,lv_org_type;
+      exit when c_get_org%NOTFOUND;
+
+      GET_GEN_EDITS(pi_bus_grp_id
+                   ,pi_req_id
+                   ,ln_org_id
+                   ,pi_wk_str_date
+                   ,pi_wk_end_date);
+
+      GET_US_EDITS(pi_bus_grp_id
+                   ,pi_req_id
+                   ,ln_org_id
+                   ,pi_wk_str_date
+                   ,pi_wk_end_date);
+
+/*      GET_ARBYS_TRG_EDIT(pi_bus_grp_id
+                        ,pi_req_id
+                        ,ln_org_id
+                        ,pi_wk_str_date
+                        ,pi_wk_end_date);
+*/
+      if gv_pay = 'WENBAK' then
+         GET_BAK_EDITS(pi_bus_grp_id
+                      ,pi_req_id
+                      ,ln_org_id
+                      ,pi_wk_str_date
+                      ,pi_wk_end_date);
+      end if;
+
+      if lv_org_type = 'STORE' then
+         GET_STORE_EDITS(pi_bus_grp_id
+                        ,pi_req_id
+                        ,ln_org_id
+                        ,pi_wk_str_date
+                        ,pi_wk_end_date);
+      end if;
+   end loop;
+   close c_get_org;
+
+END GET_US_REP_EDITS;
+
+/*******************************************************************************
+    Name         :   GET_CA_REP_EDITS
+    Scope        :   GLOBAL
+    Description  :   This function is used to generate the XML for CA
+    Author       :   Kumaresan
+*******************************************************************************/
+PROCEDURE GET_CA_REP_EDITS(pi_bus_grp_id    IN NUMBER
+                          ,pi_pay_id        IN NUMBER
+                          ,pi_wk_str_date   IN DATE
+                          ,pi_wk_end_date   IN DATE
+                          ,pi_req_id        IN NUMBER
+                          ,pi_thr_num       IN NUMBER) IS
+
+cursor c_get_org is
+select distinct
+       xx.organization_id
+      ,type
+  from xxarg.xxarg_hr_multi_thread_tbl xx
+      ,hr_organization_units hro
+ where xx.request_id = pi_req_id
+   and hro.organization_id = xx.organization_id
+   and thread_number = pi_thr_num;
+
+   ln_org_id   number;
+   lv_org_type varchar2(10);
+
+BEGIN
+
+   -- Fetch Errors
+   open c_get_org;
+   loop
+      fetch c_get_org into ln_org_id
+                          ,lv_org_type;
+      exit when c_get_org%NOTFOUND;
+
+      GET_GEN_EDITS(pi_bus_grp_id
+                   ,pi_req_id
+                   ,ln_org_id
+                   ,pi_wk_str_date
+                   ,pi_wk_end_date);
+
+      GET_CA_EDITS(pi_bus_grp_id
+                   ,pi_req_id
+                   ,ln_org_id
+                   ,pi_wk_str_date
+                   ,pi_wk_end_date);
+
+      if lv_org_type = 'STORE' then
+         GET_STORE_EDITS(pi_bus_grp_id
+                        ,pi_req_id
+                        ,ln_org_id
+                        ,pi_wk_str_date
+                        ,pi_wk_end_date);
+      end if;
+
+   end loop;
+   close c_get_org;
+
+END GET_CA_REP_EDITS;
+
+
+/*******************************************************************************
+    Name         :   GET_REP_DATA
+    Scope        :   GLOBAL
+    Author       :   Kumaresan
+*******************************************************************************/
+PROCEDURE GET_REP_DATA(errbuf           OUT VARCHAR2
+                      ,retcode          OUT VARCHAR2
+                      ,pi_bus_grp_id     IN NUMBER
+                      ,pi_pay_id         IN NUMBER
+                      ,pi_str_date       IN VARCHAR2
+                      ,pi_end_date       IN VARCHAR2
+                      ,pi_req_id         IN NUMBER
+                      ,pi_mode           IN VARCHAR2
+                      ,pi_thr_num        IN NUMBER) IS
+
+cursor c_get_pay_name(cp_str_date date) is
+select payroll_name
+  from pay_all_payrolls_f
+ where payroll_id = pi_pay_id
+   and cp_str_date between effective_start_date
+                       and effective_end_date;
+
+cursor c_get_emp(cp_eff_st_date  date
+                ,cp_eff_end_date date) is
+select papf.person_id
+      ,paf.assignment_id
+      ,employee_number
+      ,full_name
+      ,paf.organization_id
+  from per_all_people_f papf
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+      ,xxarg.xxarg_hr_multi_thread_tbl xhmt
+ where xhmt.request_id = pi_req_id
+   and xhmt.thread_number = pi_thr_num
+   and xhmt.person_id = papf.person_id
+   and papf.person_id = paf.person_id
+--   and papf.person_id = 19617
+   and ppos.period_of_service_id = paf.period_of_service_id
+   and paf.primary_flag = 'Y'
+   and ((ppos.actual_termination_date is null
+         and cp_eff_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= cp_eff_end_date
+          and cp_eff_end_date between paf.effective_start_date
+                                  and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between cp_eff_st_date
+                                           and cp_eff_end_date
+          and cp_eff_end_date between paf.effective_start_date
+                                 and paf.effective_end_date))
+   and cp_eff_end_date between papf.effective_start_date
+                           and papf.effective_end_date;
+
+cursor c_get_det(cp_per_id number
+                ,cp_eff_st_date  date
+                ,cp_eff_end_date date) is
+select hld.time_building_block_id
+      ,htbb.measure
+      ,hld.start_time
+      ,trunc(hld.stop_time) stop_time
+      ,htbb.parent_building_block_id
+      ,hld.object_version_number
+ from hxc_latest_details hld
+     ,hxc_time_building_blocks htbb
+where hld.time_building_block_id = htbb.time_building_block_id
+  and hld.object_version_number = htbb.object_version_number
+  and hld.resource_id = cp_per_id
+  and trunc(htbb.date_to) = hr_general.end_of_time
+  and trunc(hld.stop_time) between cp_eff_st_date
+                               and cp_eff_end_date;
+
+cursor c_get_det_otlr(cp_per_id number
+                     ,cp_eff_st_date  date
+                     ,cp_eff_end_date date) is
+select hdh.id detail_time_id
+      ,hdh.object_version_number
+      ,hours
+      ,hourly_rate rate
+      ,date_worked
+      ,petf.element_type_id
+      ,petf.element_name
+      ,pcak.segment2 cost_center
+      ,ht.for_person_id
+  from hxt_det_hours_worked_f hdh
+      ,hxt_timecards_f ht
+      ,pay_element_types_f petf
+      ,pay_cost_allocation_keyflex pcak
+where ht.for_person_id = cp_per_id
+  and hdh.tim_id = ht.id
+  and petf.element_type_id = hdh.element_type_id
+  and hdh.ffv_cost_center_id = pcak.cost_allocation_keyflex_id(+)
+  and cp_eff_end_date between petf.effective_start_date
+                          and petf.effective_end_date
+  and trunc(date_worked) between cp_eff_st_date
+                             and cp_eff_end_date;
+
+cursor c_get_wag_custom_det(cp_tbb_id   number
+                           ,cp_obj_ver  number
+                           ,cp_eff_date date) is
+select (select location_code
+          from hr_locations_all hl
+         where hl.location_id = htt.attribute1) location_code
+      ,htt.attribute1 location_id
+      ,(select pj.name
+          from per_jobs pj
+         where pj.job_id = htt.attribute2
+           and cp_eff_date between pj.date_from
+                                    and nvl(pj.date_to, hr_general.end_of_time)) job
+      ,htt.attribute2 job_id
+	  ,(select ppb.name
+          from per_pay_bases ppb
+         where ppb.pay_basis_id = htt.attribute3) sal_basis
+  from hxc_time_attribute_usages htat
+      ,hxc_time_attributes htt
+ where htat.time_building_block_id = cp_tbb_id
+   and htat.time_building_block_ovn = cp_obj_ver
+   and htat.time_attribute_id =  htt.time_attribute_id
+   and htt.attribute_category = 'WAG Custom';
+
+
+   ld_str_date date;
+   ld_end_date date;
+
+   lc_get_emp            c_get_emp%ROWTYPE;
+   lc_get_det            c_get_det%ROWTYPE;
+   lc_get_wag_custom_det c_get_wag_custom_det%ROWTYPE;
+   lc_get_det_otlr       c_get_det_otlr%ROWTYPE;
+
+   lv_ele_name        varchar2(30);
+   lv_cc              varchar2(30);
+   lv_acc             varchar2(30);
+   lv_loc_cc          varchar2(30);
+
+   ln_err_ct          number;
+   ln_org_id          number;
+   ln_tb_bl_id        number;
+   ln_obj_ver         number;
+   ln_ele_type_id     number;
+   ln_rate            number;
+
+   ln_comm_cnt        number := 20;
+   ln_count           number := 0;
+BEGIN
+   -- Set mode of extraction
+   gv_mode := pi_mode;
+   gn_pay_id := pi_pay_id;
+
+   ld_str_date := fnd_date.canonical_to_date(pi_str_date);
+   ld_end_date := fnd_date.canonical_to_date(pi_end_date);
+
+   -- Get Payroll Name
+   open c_get_pay_name(ld_str_date);
+   fetch c_get_pay_name into gv_pay;
+   close c_get_pay_name;
+
+   xxarg_hr_util_pkg.debug(gv_debug
+                          ,gc_pack || '.GET_REP_DATA'
+                          ,10);
+   xxarg_hr_util_pkg.debug_message(gv_debug
+                                  ,'Eff Start Date = ' || ld_str_date);
+   xxarg_hr_util_pkg.debug_message(gv_debug
+                                  ,'Eff End Date = ' || ld_end_date);
+
+
+   open c_get_emp(ld_str_date
+                 ,ld_end_date);
+   loop
+      fetch c_get_emp into lc_get_emp;
+      exit when c_get_emp%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                     ,'Per ID = ' || lc_get_emp.employee_number);
+
+      if gv_mode = 'OTL' then
+         -- Fetch Latest Timecard details
+         open c_get_det(lc_get_emp.person_id
+                       ,ld_str_date
+                       ,ld_end_date);
+         loop
+
+            fetch c_get_det into lc_get_det;
+            exit when c_get_det%notfound;
+
+            lc_get_wag_custom_det := null;
+            open c_get_wag_custom_det(lc_get_det.time_building_block_id
+                                     ,lc_get_det.object_version_number
+                                     ,lc_get_det.stop_time);
+            fetch c_get_wag_custom_det into lc_get_wag_custom_det;
+            close c_get_wag_custom_det;
+
+            lv_ele_name    := null;
+            ln_ele_type_id := null;
+            ln_rate        := null;
+            -- Get Element Name, Type and Rate
+            begin
+
+               xxarg_hr_util_pkg.debug(gv_debug
+                             ,gc_pack || '.GET_REP_DATA'
+                             ,30);
+
+               select petf.element_name
+                     ,petf.element_type_id
+                     ,htts.attribute3
+                 into lv_ele_name
+                     ,ln_ele_type_id
+                     ,ln_rate
+                 from hxc_time_attribute_usages htats
+                     ,hxc_time_attributes htts
+                     ,pay_element_types_f petf
+               where htats.time_building_block_id = lc_get_det.time_building_block_id
+                 and htats.time_attribute_id =  htts.time_attribute_id
+                 and htats.time_building_block_ovn = lc_get_det.object_version_number
+                 and htts.attribute_category like 'ELEMENT - %'
+                 and petf.element_type_id = to_number(substr(htts.attribute_category,10))
+                 and lc_get_det.stop_time between petf.effective_start_date
+                                              and petf.effective_end_date;
+
+            exception
+               when others then
+                  lv_ele_name := null;
+                  ln_rate     := null;
+                  ln_ele_type_id := null;
+            end;
+
+            lv_loc_cc := null;
+            -- Get Location Cost Center if location is specified
+            if lc_get_wag_custom_det.location_code is not null then
+               begin
+                  select pcak.segment2
+                    into lv_loc_cc
+                    from hr_organization_units hro
+                        ,pay_cost_allocation_keyflex pcak
+                   where hro.location_id = lc_get_wag_custom_det.location_id
+                     and hro.cost_allocation_keyflex_id = pcak.cost_allocation_keyflex_id
+                     and lc_get_det.stop_time between hro.date_from
+                                                  and nvl(hro.date_to
+                                                         ,hr_general.end_of_time);
+               exception
+                  when others then
+                     lv_loc_cc := null;
+               end;
+            end if;
+
+            lv_cc  := null;
+            lv_acc := null;
+            -- Get Cost Center and Account Details
+            begin
+               select htts.attribute2
+                     ,htts.attribute3
+                 into lv_cc
+                     ,lv_acc
+                from hxc_time_attribute_usages htats
+                    ,hxc_time_attributes htts
+                    ,hxc_bld_blk_info_types hbt
+               where htats.time_building_block_id = lc_get_det.time_building_block_id
+                 and htats.time_building_block_ovn = lc_get_det.object_version_number
+                 and htats.time_attribute_id =  htts.time_attribute_id
+                 and hbt.bld_blk_info_type_id = htts.bld_blk_info_type_id
+                 and hbt.bld_blk_info_type = 'Dummy Cost Context';
+
+            exception
+               when others then
+                  lv_cc  := null;
+                  lv_acc := null;
+            end;
+
+            -- Get WAG Custom details
+            INS_DATA(pi_req_id
+                    ,lc_get_emp.organization_id
+                    ,lc_get_emp.person_id
+                    ,lc_get_emp.assignment_id
+                    ,ln_ele_type_id
+                    ,lv_ele_name
+                    ,lc_get_det.stop_time
+                    ,lc_get_det.measure
+                    ,lv_cc
+                    ,lv_loc_cc
+                    ,lc_get_wag_custom_det.sal_basis
+                    ,lc_get_wag_custom_det.job
+                    ,ln_rate
+                    ,lv_acc
+                    ,lc_get_wag_custom_det.location_code
+                    ,lc_get_wag_custom_det.job_id
+                    ,lc_get_det.time_building_block_id
+                    ,lc_get_det.object_version_number);
+
+         end loop;
+
+         close c_get_det;
+      else
+         -- Fetch in OTLR mode
+         -- Fetch Latest Timecard details
+         open c_get_det_otlr(lc_get_emp.person_id
+                            ,ld_str_date
+                            ,ld_end_date);
+         loop
+
+            fetch c_get_det_otlr into lc_get_det_otlr;
+            exit when c_get_det_otlr%notfound;
+
+
+            -- Get WAG Custom details
+            INS_DATA(pi_req_id
+                    ,lc_get_emp.organization_id
+                    ,lc_get_emp.person_id
+                    ,lc_get_emp.assignment_id
+                    ,lc_get_det_otlr.element_type_id
+                    ,lc_get_det_otlr.element_name
+                    ,lc_get_det_otlr.date_worked
+                    ,lc_get_det_otlr.hours
+                    ,lc_get_det_otlr.cost_center
+                    ,null -- LOC cost center
+                    ,null
+                    ,null
+                    ,lc_get_det_otlr.rate
+                    ,null
+                    ,null        -- Location Code
+                    ,null        -- Job ID
+                    ,lc_get_det_otlr.detail_time_id
+                    ,lc_get_det_otlr.object_version_number);
+
+         end loop;
+         close c_get_det_otlr;
+
+      end if; -- if gv_mode = 'OTL'
+
+      ln_count := ln_count + 1;
+
+      if ln_count >= ln_comm_cnt then
+         commit;
+         ln_count := 0;
+      end if;
+
+      update xxarg.xxarg_hr_multi_thread_tbl
+         set status = 'P'
+       where request_id = pi_req_id
+         and person_id = lc_get_emp.person_id;
+   end loop;
+   close c_get_emp;
+
+   -- Get errors
+   if pi_bus_grp_id = 0 then
+      GET_US_REP_EDITS(pi_bus_grp_id
+                      ,pi_pay_id
+                      ,ld_str_date
+                      ,ld_end_date
+                      ,pi_req_id
+                      ,pi_thr_num);
+   else
+      GET_CA_REP_EDITS(pi_bus_grp_id
+                      ,pi_pay_id
+                      ,ld_str_date
+                      ,ld_end_date
+                      ,pi_req_id
+                      ,pi_thr_num);
+   end if;
+END GET_REP_DATA;
+
+/*******************************************************************************
+    Name         :   GET_REP_DATA
+    Scope        :   GLOBAL
+    Description  :   This function is used to generate the XML for OTL Data
+                     Edit report
+    Author       :   Kumaresan
+*******************************************************************************/
+PROCEDURE GET_REP_XML(errbuf           OUT VARCHAR2
+                     ,retcode          OUT VARCHAR2
+                     ,pi_bus_grp_id     IN NUMBER
+                     ,pi_pay_id         IN NUMBER
+                     ,pi_wk_end_date    IN VARCHAR2
+                     ,pi_mode           IN VARCHAR2
+                     ,pi_thr_count      IN NUMBER) IS
+
+cursor c_get_pay_name(cp_eff_date date) is
+select payroll_name
+  from pay_all_payrolls_f
+ where payroll_id = pi_pay_id
+   and cp_eff_date between effective_start_date
+                          and effective_end_date;
+
+cursor c_get_wk_end_date(cp_eff_date date) is
+with xxarg_payroll_dates AS
+(
+select ptp.start_date
+      ,ptp.start_date + 6 end_date
+      ,ptp.payroll_id
+  from per_time_periods ptp
+      ,pay_all_payrolls_f ppf
+ where ppf.payroll_id = ptp.payroll_id
+   and ppf.business_group_id = pi_bus_grp_id
+   and trunc(sysdate) between ppf.effective_start_date
+                          and ppf.effective_end_date
+union all
+select ptp.start_date + 7 start_date
+      ,ptp.end_date
+      ,ptp.payroll_id
+  from per_time_periods ptp
+      ,pay_all_payrolls_f ppf
+ where ppf.payroll_id = ptp.payroll_id
+   and ppf.business_group_id = pi_bus_grp_id
+   and (ptp.end_date - ptp.start_date) > 7
+   and trunc(sysdate) between ppf.effective_start_date
+                          and ppf.effective_end_date
+)
+select xxpd.start_date
+      ,xxpd.end_date
+  from xxarg_payroll_dates xxpd
+ where xxpd.payroll_id = pi_pay_id
+   and cp_eff_date between xxpd.start_date
+                       and xxpd.end_date;
+
+cursor c_get_org is
+select xxflat.organization_id
+  from xxarg.xxarg_hr_org_flat_hierarchy xxflat
+ where business_group_id = pi_bus_grp_id
+   and hr_org_flag = 'Y'
+--   and organization_id = 2006
+   and payroll_id = pi_pay_id;
+
+cursor c_get_org_mt(cp_req_id number) is
+select organization_id
+      ,min(thread_number) thread_number
+  from xxarg.xxarg_hr_multi_thread_tbl
+ where request_id = cp_req_id
+ group by organization_id
+having count(distinct thread_number) > 1;
+
+cursor c_get_org_flat(cp_req_id number) is
+select xxflat.organization_name
+      ,wag_organization_desc
+      ,wag_region_desc
+      ,wag_sr_div_desc
+      ,wag_dist_area_desc
+      ,wag_area_dist_desc
+      ,wag_store_dept_desc
+      ,xxflat.organization_id
+  from xxarg.xxarg_hr_org_flat_hierarchy xxflat
+ where business_group_id = pi_bus_grp_id
+   and hr_org_flag = 'Y'
+   and payroll_id = pi_pay_id
+   and exists (select 'Exists'
+                 from xxarg.xxarg_hr_otl_data_edit_err_tbl xxerr
+                where xxerr.organization_id = xxflat.organization_id
+                  and xxerr.request_id = cp_req_id)
+ order by wag_region_desc
+        ,decode(wag_sr_div_desc, null, 1, 2) asc
+        ,wag_sr_div_desc
+        ,decode(wag_dist_area_desc, null, 1, 2) asc
+        ,wag_dist_area_desc
+        ,decode(wag_area_dist_desc, null, 1, 2) asc
+        ,wag_area_dist_desc
+        ,decode(wag_store_dept_desc, null, 1, 2) asc
+        ,wag_store_dept_desc;
+
+
+cursor c_get_emp(cp_org_id       number
+                ,cp_eff_st_date  date
+                ,cp_eff_end_date date) is
+select papf.person_id
+      ,paf.assignment_id
+  from per_all_people_f papf
+      ,per_all_assignments_f paf
+      ,per_periods_of_service ppos
+ where paf.organization_id = cp_org_id
+   and papf.person_id = paf.person_id
+   and ppos.period_of_service_id = paf.period_of_service_id
+   and paf.primary_flag = 'Y'
+   and ((ppos.actual_termination_date is null
+         and cp_eff_end_date between paf.effective_start_date
+                                 and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date >= cp_eff_end_date
+          and cp_eff_end_date between paf.effective_start_date
+                                  and paf.effective_end_date)
+         or
+         (ppos.actual_termination_date between cp_eff_st_date
+                                           and cp_eff_end_date
+          and cp_eff_end_date between paf.effective_start_date
+                                 and paf.effective_end_date))
+   and cp_eff_end_date between papf.effective_start_date
+                          and papf.effective_end_date;
+
+
+cursor c_get_org_err(cp_req_id       number
+                    ,cp_org_id       number) is
+select error_code
+      ,error_message
+  from xxarg.xxarg_hr_otl_data_edit_err_tbl xxerr
+ where xxerr.request_id = cp_req_id
+   and xxerr.organization_id = cp_org_id
+   and person_id is null;
+
+
+cursor c_get_err(cp_req_id       number
+                ,cp_org_id       number
+                ,cp_eff_end_date date) is
+select papf.employee_number
+      ,papf.full_name
+      ,error_code
+      ,error_message
+  from xxarg.xxarg_hr_otl_data_edit_err_tbl xxerr
+      ,per_all_people_f papf
+ where xxerr.request_id = cp_req_id
+   and xxerr.organization_id = cp_org_id
+   and xxerr.person_id = papf.person_id
+   and cp_eff_end_date between papf.effective_start_date
+                           and papf.effective_end_date
+ order by papf.employee_number
+         ,error_code;
+
+   ld_date           date;
+   ld_str_date       date;
+   ld_end_date       date;
+
+   ln_org_id         number;
+   ln_per_id         number;
+   ln_asg_id         number;
+   ln_count          number;
+   ln_threads        number := 4;
+   ln_thr_per_cnt    number;
+   ln_request_id     number;
+
+   lv_phase          varchar2(30);
+   lv_status         varchar2(30);
+   lv_dev_phase      varchar2(80);
+   lv_dev_status     varchar2(80);
+   lv_message        varchar2(200);
+   lv_region_desc    varchar2(250);
+   lv_sr_div_desc    varchar2(250);
+   lv_dist_area_desc varchar2(250);
+   lv_area_dist_desc varchar2(250);
+   lv_err_code       varchar2(30);
+   lv_emp_no         varchar2(30);
+
+
+   lb_ret_val        boolean;
+   lb_end_tag        boolean := FALSE;
+   lb_end_err_tag    boolean := FALSE;
+
+   TYPE requests_tab IS TABLE OF NUMBER
+                        INDEX BY BINARY_INTEGER;
+
+   lt_req_tbl        requests_tab;
+
+   lc_get_org_mt     c_get_org_mt%ROWTYPE;
+   lc_get_org_flat   c_get_org_flat%ROWTYPE;
+   lc_get_err        c_get_err%ROWTYPE;
+   lc_get_org_err    c_get_org_err%ROWTYPE;
+
+
+BEGIN
+
+   xxarg_hr_util_pkg.debug(gv_debug
+                          ,gc_pack || '.GET_REP_XML'
+                          ,10);
+
+   ld_date      := fnd_date.canonical_to_date(pi_wk_end_date);
+   ln_threads   := pi_thr_count;
+
+   -- Get Week end Date
+   open c_get_wk_end_date(ld_date);
+   fetch c_get_wk_end_date into ld_str_date
+                               ,ld_end_date;
+   close c_get_wk_end_date;
+
+   gn_pay_id := pi_pay_id;
+
+   -- Get Payroll Name
+   open c_get_pay_name(ld_end_date);
+   fetch c_get_pay_name into gv_pay;
+   close c_get_pay_name;
+
+   xxarg_hr_util_pkg.debug(gv_debug
+                          ,gc_pack || '.GET_REP_XML'
+                          ,20);
+
+   open c_get_org;
+   loop
+      fetch c_get_org into ln_org_id;
+      exit when c_get_org%notfound;
+
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                  ,'Org ID = ' || ln_org_id);
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                  ,'Start Date = ' || ld_str_date);
+      xxarg_hr_util_pkg.debug_message(gv_debug
+                                  ,'End Date = ' || ld_end_date);
+
+      open c_get_emp(ln_org_id
+                    ,ld_str_date
+                    ,ld_end_date);
+      loop
+         fetch c_get_emp into ln_per_id
+                             ,ln_asg_id;
+         exit when c_get_emp%notfound;
+
+         xxarg_hr_util_pkg.debug_message(gv_debug
+                                       ,'Pers ID = ' || ln_per_id);
+
+         -- Insert into custom multi-thread table
+         insert into xxarg.xxarg_hr_multi_thread_tbl
+                    (request_id
+                    ,person_id
+                    ,assignment_id
+                    ,organization_id
+                    ,thread_number
+                    ,status
+                    ,last_update_date
+                    ,last_updated_by
+                    ,creation_date
+                    ,created_by)
+             values(fnd_global.conc_request_id
+                   ,ln_per_id
+                   ,ln_asg_id
+                   ,ln_org_id
+                   ,null
+                   ,'U'
+                   ,sysdate
+                   ,fnd_global.user_id
+                   ,sysdate
+                   ,fnd_global.user_id);
+      end loop;
+      close c_get_emp;
+
+   end loop;
+   close c_get_org;
+
+   -- Count no. of employees to be processed and update the thread number
+   -- based on number of threads
+   begin
+      select count(*)
+        into ln_count
+        from xxarg.xxarg_hr_multi_thread_tbl
+       where request_id = fnd_global.conc_request_id;
+
+       ln_thr_per_cnt := ceil(ln_count/ln_threads);
+
+       for i in 1..ln_threads loop
+          update xxarg.xxarg_hr_multi_thread_tbl
+             set thread_number = i
+           where request_id = fnd_global.conc_request_id
+             and thread_number is null
+             and rownum <= ln_thr_per_cnt;
+       end loop;
+   exception
+      when others then
+         update xxarg.xxarg_hr_multi_thread_tbl
+             set thread_number = 1
+           where request_id = fnd_global.conc_request_id
+             and thread_number is null
+             and rownum <= ln_thr_per_cnt;
+   end;
+
+   -- Check for organization attached to multiple threads
+   open c_get_org_mt(fnd_global.conc_request_id);
+   loop
+      fetch c_get_org_mt into lc_get_org_mt;
+      exit when c_get_org_mt%NOTFOUND;
+
+      update xxarg.xxarg_hr_multi_thread_tbl
+         set thread_number = lc_get_org_mt.thread_number
+       where request_id = fnd_global.conc_request_id
+         and organization_id = lc_get_org_mt.organization_id;
+
+   end loop;
+   close c_get_org_mt;
+
+   commit;
+
+   for i in 1..ln_threads loop
+      ln_request_id :=
+            fnd_request.submit_request
+                            (application      => 'XXARG'
+                            ,program          => 'XXARG_HR_OTL_DATA_EDIT_CHLD'
+                            ,description      => NULL
+                            ,start_time       => TO_CHAR
+                                                     (SYSDATE,
+                                                      'DD-MON-YYYY HH24:MI:SS'
+                                                     )
+                            ,sub_request      => FALSE
+                            ,argument1        => pi_bus_grp_id
+                            ,argument2        => pi_pay_id
+                            ,argument3        => fnd_date.date_to_canonical(ld_str_date)
+                            ,argument4        => fnd_date.date_to_canonical(ld_end_date)
+                            ,argument5        => fnd_global.conc_request_id
+                            ,argument6        => pi_mode
+                            ,argument7        => i
+                            );
+      COMMIT;
+      lt_req_tbl(i) := ln_request_id;
+
+   end loop;
+
+   for i in 1..ln_threads loop
+      ln_request_id := lt_req_tbl(i);
+
+      lb_ret_val := fnd_concurrent.wait_for_request
+                                            (ln_request_id
+                                            ,10
+                                            ,99999999
+                                            ,lv_phase
+                                            ,lv_status
+                                            ,lv_dev_phase
+                                            ,lv_dev_status
+                                            ,lv_message
+                                            );
+
+       if (lv_phase = 'Completed' AND lv_status = 'Normal') then
+          null;
+       elsif(lv_status = 'Warning') then
+          errbuf := errbuf || lv_message;
+          retcode := 1;
+       elsif(lv_status = 'Error') then
+          errbuf := errbuf || lv_message;
+          retcode := 2;
+       end if;
+   end loop;
+
+   -- Create the XML
+   fnd_file.put_line (fnd_file.output
+                     ,'<?xml version="1.0" encoding="UTF-8"?>');
+
+   -- Start Tag
+   xxarg_hr_util_pkg.load_xml('CS'
+                             ,'REPORT');
+
+   -- Report Name Tag
+   xxarg_hr_util_pkg.load_xml('D'
+                             ,'REPORT_NAME'
+                             ,'Data Edit Report');
+
+   -- Report Run Date
+   xxarg_hr_util_pkg.load_xml('D'
+                             ,'RUNDATE'
+                             ,to_char(sysdate,'DD-MON-YYYY'));
+
+   -- Report Run Date
+   xxarg_hr_util_pkg.load_xml('D'
+                             ,'RUNTIME'
+                             ,to_char(sysdate,'HH:MM:SS'));
+
+   -- Period Start Date
+   xxarg_hr_util_pkg.load_xml('D'
+                             ,'WK_END_DATE'
+                             ,to_char(ld_end_date,'DD-MON-YYYY'));
+
+   -- Period Start Date
+   xxarg_hr_util_pkg.load_xml('D'
+                             ,'PAY'
+                             ,upper(gv_pay));
+
+   if gv_pay like 'WEN%' then
+      xxarg_hr_util_pkg.load_xml('D'
+                                ,'SR_DIV'
+                                ,'DIVISION');
+
+      xxarg_hr_util_pkg.load_xml('D'
+                                ,'DS_AR'
+                                ,'AREA');
+
+      xxarg_hr_util_pkg.load_xml('D'
+                                ,'AR_DS'
+                                ,'DISTRICT');
+
+   else
+      xxarg_hr_util_pkg.load_xml('D'
+                                ,'SR_DIV'
+                                ,'SUB-REGION');
+
+      xxarg_hr_util_pkg.load_xml('D'
+                                ,'DS_AR'
+                                ,'DISTRICT');
+
+      xxarg_hr_util_pkg.load_xml('D'
+                                ,'AR_DS'
+                                ,'AREA');
+   end if;
+
+   -- Loop through errors and create the XML
+   open c_get_org_flat(fnd_global.conc_request_id);
+   loop
+      fetch c_get_org_flat into lc_get_org_flat;
+      exit when c_get_org_flat%notfound;
+
+      lb_end_tag := TRUE;
+
+      if lv_region_desc is null then
+         lv_region_desc     := lc_get_org_flat.wag_region_desc;
+         lv_sr_div_desc     := lc_get_org_flat.wag_sr_div_desc;
+         lv_dist_area_desc  := lc_get_org_flat.wag_dist_area_desc;
+         lv_area_dist_desc  := lc_get_org_flat.wag_area_dist_desc;
+
+         -- Start Organization Tag
+         xxarg_hr_util_pkg.load_xml('CS'
+                                   ,'ORGFLAT');
+         xxarg_hr_util_pkg.load_xml('D', 'REG', lc_get_org_flat.wag_region_desc);
+         xxarg_hr_util_pkg.load_xml('D', 'SRDIV', lc_get_org_flat.wag_sr_div_desc);
+         xxarg_hr_util_pkg.load_xml('D', 'D_A', lc_get_org_flat.wag_dist_area_desc);
+         xxarg_hr_util_pkg.load_xml('D', 'A_D', lc_get_org_flat.wag_area_dist_desc);
+      end if;
+
+
+      if (lv_region_desc <> lc_get_org_flat.wag_region_desc
+          or lv_sr_div_desc <> lc_get_org_flat.wag_sr_div_desc
+          or lv_dist_area_desc <> lc_get_org_flat.wag_dist_area_desc
+          or lv_area_dist_desc <> lc_get_org_flat.wag_area_dist_desc) then
+
+         -- End Org Flat Tag
+         xxarg_hr_util_pkg.load_xml('CE'
+                                   ,'ORGFLAT');
+
+         -- Start Org Flat Tag
+         xxarg_hr_util_pkg.load_xml('CS'
+                                   ,'ORGFLAT');
+         xxarg_hr_util_pkg.load_xml('D', 'REG', lc_get_org_flat.wag_region_desc);
+         xxarg_hr_util_pkg.load_xml('D', 'SRDIV', lc_get_org_flat.wag_sr_div_desc);
+         xxarg_hr_util_pkg.load_xml('D', 'A_D', lc_get_org_flat.wag_dist_area_desc);
+         xxarg_hr_util_pkg.load_xml('D', 'D_A', lc_get_org_flat.wag_area_dist_desc);
+
+         lv_region_desc     := lc_get_org_flat.wag_region_desc;
+         lv_sr_div_desc     := lc_get_org_flat.wag_sr_div_desc;
+         lv_dist_area_desc  := lc_get_org_flat.wag_dist_area_desc;
+         lv_area_dist_desc  := lc_get_org_flat.wag_area_dist_desc;
+      end if;
+
+      lb_end_err_tag := FALSE;
+      lv_err_code    := null;
+      lv_emp_no      := null;
+      -- Start Org Flat Tag
+      xxarg_hr_util_pkg.load_xml('CS'
+                                ,'ORG');
+
+      xxarg_hr_util_pkg.load_xml('D', 'ORGNAME', lc_get_org_flat.organization_name);
+
+
+      xxarg_hr_util_pkg.load_xml('CS'
+                                ,'ORGERR');
+
+      open c_get_org_err(fnd_global.conc_request_id
+                        ,lc_get_org_flat.organization_id);
+      loop
+         fetch c_get_org_err into lc_get_org_err;
+         exit when c_get_org_err%notfound;
+         xxarg_hr_util_pkg.load_xml('CS'
+                                   ,'ERD');
+         xxarg_hr_util_pkg.load_xml('D'
+                                   ,'ERC'
+                                   ,lc_get_org_err.error_code);
+         xxarg_hr_util_pkg.load_xml('D'
+                                   ,'ERM'
+                                   ,lc_get_org_err.error_message);
+         xxarg_hr_util_pkg.load_xml('CE'
+                                   ,'ERD');
+
+      end loop;
+      close c_get_org_err;
+
+      xxarg_hr_util_pkg.load_xml('CE'
+                                ,'ORGERR');
+
+      open c_get_err(fnd_global.conc_request_id
+                    ,lc_get_org_flat.organization_id
+                    ,ld_end_date);
+      loop
+         fetch c_get_err into lc_get_err;
+         exit when c_get_err%NOTFOUND;
+
+         lb_end_err_tag := TRUE;
+
+         if lv_emp_no is null then
+            -- Start Employee Tag
+            xxarg_hr_util_pkg.load_xml('CS'
+                                      ,'EMP');
+
+            lv_emp_no := lc_get_err.employee_number;
+
+            -- Employee Data
+            xxarg_hr_util_pkg.load_xml('D'
+                                      ,'ENO'
+                                      ,lc_get_err.employee_number);
+
+            xxarg_hr_util_pkg.load_xml('D'
+                                      ,'EN'
+                                      ,lc_get_err.full_name);
+
+         end if;
+
+         if lv_emp_no is null  or lv_emp_no <> lc_get_err.employee_number then
+            -- End Org Flat Tag
+            xxarg_hr_util_pkg.load_xml('CE'
+                                      ,'EMP');
+            -- Start Org Flat Tag
+            xxarg_hr_util_pkg.load_xml('CS'
+                                      ,'EMP');
+
+            lv_emp_no := lc_get_err.employee_number;
+            -- Employee Data
+            xxarg_hr_util_pkg.load_xml('D'
+                                      ,'ENO'
+                                      ,lc_get_err.employee_number);
+
+            xxarg_hr_util_pkg.load_xml('D'
+                                      ,'EN'
+                                      ,lc_get_err.full_name);
+
+         end if;
+
+         xxarg_hr_util_pkg.load_xml('CS'
+                                   ,'ERD');
+         xxarg_hr_util_pkg.load_xml('D'
+                                   ,'ERC'
+                                   ,lc_get_err.error_code);
+         xxarg_hr_util_pkg.load_xml('D'
+                                   ,'ERM'
+                                   ,lc_get_err.error_message);
+         xxarg_hr_util_pkg.load_xml('CE'
+                                   ,'ERD');
+
+
+      end loop;
+      close c_get_err;
+
+      -- Start Org Flat Tag
+      if lb_end_err_tag then
+         xxarg_hr_util_pkg.load_xml('CE'
+                                    ,'EMP');
+      end if;
+
+      -- Start Org Flat Tag
+      xxarg_hr_util_pkg.load_xml('CE'
+                                ,'ORG');
+
+   end loop;
+   close c_get_org_flat;
+
+   -- End Organization Tag
+   if lb_end_tag then
+      xxarg_hr_util_pkg.load_xml('CE'
+                                ,'ORGFLAT');
+   end if;
+
+
+   -- End Tag
+   xxarg_hr_util_pkg.load_xml('CE'
+                             ,'REPORT');
+
+   xxarg_hr_util_pkg.debug(gv_debug
+                          ,gc_pack || '.GET_REP_XML'
+                          ,20);
+
+END GET_REP_XML;
+
+
+END XXARG_HR_OTL_DATA_EDIT_REP_PKG;

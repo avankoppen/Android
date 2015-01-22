@@ -1,0 +1,115 @@
+CREATE OR REPLACE PACKAGE XXARG_HR_SUBMIT_TC
+AS
+   PROCEDURE submit_tcs (
+      p_errbuff         OUT   VARCHAR2,
+      p_retcode         OUT   NUMBER,
+      p_payroll_id            NUMBER,
+      p_week_end_date         VARCHAR2
+   );
+END xxarg_hr_submit_tc;
+
+
+/
+CREATE OR REPLACE PACKAGE BODY XXARG_HR_SUBMIT_TC
+AS
+
+   FUNCTION get_messages (
+      p_message_table   hxc_self_service_time_deposit.message_table
+   )
+      RETURN VARCHAR2
+   IS
+      l_message_text   VARCHAR2 (4000) := NULL;
+      l_message        VARCHAR2 (600);
+      i                NUMBER;
+      l_proc_name      VARCHAR2 (30)   := 'get_messages';
+   BEGIN
+      i := p_message_table.FIRST;
+
+      LOOP
+         EXIT WHEN (NOT p_message_table.EXISTS (i));
+         l_message :=
+            fnd_message.get_string
+                         (appin       => p_message_table (i).application_short_name,
+                          namein      => p_message_table (i).message_name
+                         );
+         l_message_text := l_message_text || l_message;
+         i := p_message_table.NEXT (i);
+      END LOOP;
+
+      RETURN SUBSTR (l_message_text, 1, 2000);
+   END get_messages;
+   PROCEDURE submit_tcs (
+      p_errbuff         OUT   VARCHAR2,
+      p_retcode         OUT   NUMBER,
+      p_payroll_id            NUMBER,
+      p_week_end_date         VARCHAR2
+   )
+   IS
+      CURSOR csr_get_tcs (p_week_end_date DATE)
+      IS
+         SELECT ppf.employee_number, ppf.full_name, hts.timecard_id
+           FROM hxc_timecard_summary hts,
+                per_all_assignments_f paf,
+                per_all_people_f ppf
+          WHERE hts.resource_id = paf.person_id
+            AND paf.person_id = ppf.person_id
+            AND hts.approval_status != 'APPROVED'
+            AND paf.payroll_id = p_payroll_id
+            AND TRUNC (hts.stop_time) = p_week_end_date
+            AND TRUNC (hts.stop_time) BETWEEN paf.effective_start_date
+                                          AND paf.effective_end_date
+            AND TRUNC (hts.stop_time) BETWEEN ppf.effective_start_date
+                                          AND ppf.effective_end_date;
+
+      l_week_end_date        DATE
+                               := fnd_date.canonical_to_date (p_week_end_date);
+      l_timecard_info        hxc_self_service_time_deposit.timecard_info;
+      l_app_attribute_info   hxc_self_service_time_deposit.app_attributes_info;
+      l_tbl_messages         hxc_self_service_time_deposit.message_table;
+      l_new_timecard_id      NUMBER;
+      l_new_timecard_ovn     NUMBER;
+   BEGIN
+      FOR tcs IN csr_get_tcs (l_week_end_date)
+      LOOP
+      
+         BEGIN
+         -- Get the timecard tables
+         hxc_timestore_deposit.get_timecard_tables
+                                 (p_building_block_id        => tcs.timecard_id,
+                                  p_deposit_process          => 'OTL Deposit Process',
+                                  p_clear_mapping_cache      => FALSE,
+                                  p_app_blocks               => l_timecard_info,
+                                  p_app_attributes           => l_app_attribute_info
+                                 );
+         -- Submit the timecard
+         hxc_timestore_deposit.execute_deposit_process
+                                  (p_validate             => FALSE,
+                                   p_app_blocks           => l_timecard_info,
+                                   p_app_attributes       => l_app_attribute_info,
+                                   p_messages             => l_tbl_messages,
+                                   p_mode                 => 'SUBMIT',
+                                   p_deposit_process      => 'OTL Deposit Process',
+                                   p_timecard_id          => l_new_timecard_id,
+                                   p_timecard_ovn         => l_new_timecard_ovn
+                                  );
+         IF (l_tbl_messages.COUNT > 0)
+         THEN
+            -- Print Messages
+            fnd_file.put_line(fnd_file.log,'Submitting timecard for employee ' || tcs.employee_number || ' ' || tcs.full_name || ' ' || get_messages (l_tbl_messages));
+            p_retcode := 1;
+
+         END IF;
+         EXCEPTION
+         WHEN OTHERS then
+            p_retcode := 1;
+            fnd_file.put_line(fnd_file.log,'Unhandled error when processing timecard for the employee ' || tcs.employee_number);
+         END;
+         
+         l_tbl_messages.delete;
+         l_app_attribute_info.delete;
+         l_timecard_info.delete;
+      END LOOP;
+         COMMIT;
+   END submit_tcs;
+END xxarg_hr_submit_tc;
+
