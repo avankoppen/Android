@@ -1,8 +1,24 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 
-# Custom for Visual Studio
-*.cs     diff=csharp
+# Custom for Oracle PL/SQL
+*.sql  diff=astextplain
+*.SQL  diff=astextplain
+*.pkb  diff=astextplain
+*.PKB  diff=astextplain
+*.tbl  diff=astextplain
+*.TBL  diff=astextplain
+*.vw  diff=astextplain
+*.VW  diff=astextplain
+*.seq  diff=astextplain
+*.SEQ  diff=astextplain
+*.syn  diff=astextplain
+*.SYN  diff=astextplain
+*.pks  diff=astextplain
+*.PKS  diff=astextplain
+*.pls  diff=astextplain
+*.PLS  diff=astextplain
+
 
 # Standard to msysgit
 *.doc	 diff=astextplain
